@@ -1,0 +1,120 @@
+from app.core.exceptions.base import EMSException
+from app.core.exceptions.common import (
+    NotFoundException,
+    AlreadyExistsException,
+    ValidationException,
+    PermissionDeniedException,
+    BadRequestException,
+    InternalServerException,
+    RateLimitExceededException,
+    FileProcessingException,
+)
+from app.core.exceptions.auth import (
+    InvalidCredentialsException,
+    TokenExpiredException,
+    TokenInvalidException,
+    TokenBlacklistedException,
+    InsufficientRoleException,
+    AccountDisabledException,
+    AccountLockedException,
+)
+from app.core.exceptions.database import (
+    DatabaseConnectionException,
+    DatabaseQueryException,
+    DatabaseIntegrityException,
+    DatabaseTimeoutException,
+    RedisConnectionException,
+    CacheOperationException,
+)
+from app.core.exceptions.student import (
+    StudentNotFoundException,
+    StudentAlreadyExistsException,
+    StudentStatusTransitionException,
+    ClassTransferException,
+    CourseRegistrationException,
+    GradeModificationException,
+    AttendanceException,
+    TuitionPaymentException,
+    StudentImportException,
+    PreservationReturnException,
+)
+from app.core.exceptions.teacher import (
+    TeacherNotFoundException,
+    TeacherAlreadyExistsException,
+    ScheduleConflictException,
+    SubstituteTeacherNotFoundException,
+    AttendanceCheckInException,
+    SalaryCalculationException,
+    LeaveRequestException,
+    AvailabilityUpdateException,
+    TeacherAssignmentException,
+    PerformanceEvaluationException,
+)
+from app.core.exceptions.facility import (
+    FacilityNotFoundException,
+    RoomBookingConflictException,
+    EquipmentUnavailableException,
+    MaintenanceScheduleException,
+    AssetDepreciationException,
+    EquipmentBorrowException,
+    FacilityStatusTransitionException,
+)
+
+__all__ = [
+    # Base
+    "EMSException",
+    # Common
+    "NotFoundException",
+    "AlreadyExistsException",
+    "ValidationException",
+    "PermissionDeniedException",
+    "BadRequestException",
+    "InternalServerException",
+    "RateLimitExceededException",
+    "FileProcessingException",
+    # Auth
+    "InvalidCredentialsException",
+    "TokenExpiredException",
+    "TokenInvalidException",
+    "TokenBlacklistedException",
+    "InsufficientRoleException",
+    "AccountDisabledException",
+    "AccountLockedException",
+    # Database
+    "DatabaseConnectionException",
+    "DatabaseQueryException",
+    "DatabaseIntegrityException",
+    "DatabaseTimeoutException",
+    "RedisConnectionException",
+    "CacheOperationException",
+    # Student
+    "StudentNotFoundException",
+    "StudentAlreadyExistsException",
+    "StudentStatusTransitionException",
+    "ClassTransferException",
+    "CourseRegistrationException",
+    "GradeModificationException",
+    "AttendanceException",
+    "TuitionPaymentException",
+    "StudentImportException",
+    "PreservationReturnException",
+    # Teacher
+    "TeacherNotFoundException",
+    "TeacherAlreadyExistsException",
+    "ScheduleConflictException",
+    "SubstituteTeacherNotFoundException",
+    "AttendanceCheckInException",
+    "SalaryCalculationException",
+    "LeaveRequestException",
+    "AvailabilityUpdateException",
+    "TeacherAssignmentException",
+    "PerformanceEvaluationException",
+    # Facility
+    "FacilityNotFoundException",
+    "RoomBookingConflictException",
+    "EquipmentUnavailableException",
+    "MaintenanceScheduleException",
+    "AssetDepreciationException",
+    "EquipmentBorrowException",
+    "FacilityStatusTransitionException",
+]
