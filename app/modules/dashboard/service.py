@@ -1,12 +1,11 @@
 """
 Dashboard Service – aggregates stats from multiple modules.
 
-Queries run concurrently with asyncio.gather for minimal latency.
+NOTE: SQLAlchemy async sessions do NOT support concurrent queries on the same
+session. Queries are executed sequentially to avoid InvalidRequestError.
 """
 
-import asyncio
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +25,7 @@ class DashboardService:
 
     async def get_stats(self) -> Dict[str, Any]:
         """
-        Collect all dashboard stats concurrently.
+        Collect all dashboard stats sequentially.
 
         Returns:
             {
@@ -39,23 +38,14 @@ class DashboardService:
                 recent_teachers: [...],   # 5 newest
             }
         """
-        (
-            total_students,
-            total_teachers,
-            total_classrooms,
-            active_students,
-            active_teachers,
-            recent_students,
-            recent_teachers,
-        ) = await asyncio.gather(
-            self._count_students(),
-            self._count_teachers(),
-            self._count_classrooms(),
-            self._count_active_students(),
-            self._count_active_teachers(),
-            self._recent_students(limit=5),
-            self._recent_teachers(limit=5),
-        )
+        # SQLAlchemy async session does not allow concurrent queries — run sequentially
+        total_students    = await self._count_students()
+        total_teachers    = await self._count_teachers()
+        total_classrooms  = await self._count_classrooms()
+        active_students   = await self._count_active_students()
+        active_teachers   = await self._count_active_teachers()
+        recent_students   = await self._recent_students(limit=5)
+        recent_teachers   = await self._recent_teachers(limit=5)
 
         return {
             "total_students": total_students,
