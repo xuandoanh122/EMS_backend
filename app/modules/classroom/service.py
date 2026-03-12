@@ -42,6 +42,29 @@ class ClassroomService:
         self._repo = ClassroomRepository(session)
 
     # ------------------------------------------------------------------
+    # Internal helper – build ClassroomResponse tránh lazy-load @property
+    # ------------------------------------------------------------------
+
+    async def _to_response(self, classroom: Classroom) -> ClassroomResponse:
+        enrollment_count = await self._repo.count_active_enrollments(classroom.id)
+        return ClassroomResponse.model_validate({
+            "id": classroom.id,
+            "class_code": classroom.class_code,
+            "class_name": classroom.class_name,
+            "class_type": classroom.class_type,
+            "academic_year": classroom.academic_year,
+            "grade_level": classroom.grade_level,
+            "homeroom_teacher_id": classroom.homeroom_teacher_id,
+            "max_capacity": classroom.max_capacity,
+            "current_enrollment": enrollment_count,
+            "room_number": classroom.room_number,
+            "description": classroom.description,
+            "is_active": classroom.is_active,
+            "created_at": classroom.created_at,
+            "updated_at": classroom.updated_at,
+        })
+
+    # ------------------------------------------------------------------
     # Classroom CRUD
     # ------------------------------------------------------------------
 
@@ -60,25 +83,46 @@ class ClassroomService:
             description=data.description,
         )
         created = await self._repo.create_classroom(obj)
-        return ClassroomResponse.model_validate(created)
+        return await self._to_response(created)
 
     async def get_classroom(self, class_code: str) -> ClassroomResponse:
         obj = await self._repo.get_classroom_by_code(class_code)
         if not obj:
             raise ClassroomNotFoundException(identifier=class_code)
-        return ClassroomResponse.model_validate(obj)
+        return await self._to_response(obj)
 
     async def get_classroom_by_id(self, classroom_id: int) -> ClassroomResponse:
         obj = await self._repo.get_classroom_by_id(classroom_id)
         if not obj:
             raise ClassroomNotFoundException(identifier=str(classroom_id))
-        return ClassroomResponse.model_validate(obj)
+        return await self._to_response(obj)
 
     async def list_classrooms(self, params: ClassroomQueryParams) -> ClassroomListResponse:
-        items, total = await self._repo.list_classrooms(params)
+        rows, total = await self._repo.list_classrooms(params)
         total_pages = math.ceil(total / params.page_size) if total > 0 else 1
+
+        items = []
+        for classroom, enrollment_count in rows:
+            data = {
+                "id": classroom.id,
+                "class_code": classroom.class_code,
+                "class_name": classroom.class_name,
+                "class_type": classroom.class_type,
+                "academic_year": classroom.academic_year,
+                "grade_level": classroom.grade_level,
+                "homeroom_teacher_id": classroom.homeroom_teacher_id,
+                "max_capacity": classroom.max_capacity,
+                "current_enrollment": enrollment_count,
+                "room_number": classroom.room_number,
+                "description": classroom.description,
+                "is_active": classroom.is_active,
+                "created_at": classroom.created_at,
+                "updated_at": classroom.updated_at,
+            }
+            items.append(ClassroomResponse.model_validate(data))
+
         return ClassroomListResponse(
-            items=[ClassroomResponse.model_validate(i) for i in items],
+            items=items,
             total=total,
             page=params.page,
             page_size=params.page_size,
@@ -92,14 +136,14 @@ class ClassroomService:
         if not obj:
             raise ClassroomNotFoundException(identifier=class_code)
         updated = await self._repo.update_classroom(obj, data)
-        return ClassroomResponse.model_validate(updated)
+        return await self._to_response(updated)
 
     async def delete_classroom(self, class_code: str) -> ClassroomResponse:
         obj = await self._repo.get_classroom_by_code(class_code)
         if not obj:
             raise ClassroomNotFoundException(identifier=class_code)
         deleted = await self._repo.soft_delete_classroom(obj)
-        return ClassroomResponse.model_validate(deleted)
+        return await self._to_response(deleted)
 
     # ------------------------------------------------------------------
     # Enrollment CRUD

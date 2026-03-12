@@ -61,30 +61,73 @@ class ClassroomRepository:
         except SQLAlchemyError as exc:
             raise DatabaseQueryException(operation="get_classroom_by_code", reason=str(exc)) from exc
 
-    async def list_classrooms(self, params: ClassroomQueryParams) -> Tuple[List[Classroom], int]:
+    async def list_classrooms(
+        self, params: ClassroomQueryParams
+    ) -> Tuple[List[Tuple[Classroom, int]], int]:
+        """
+        Trả về list of (Classroom, current_enrollment_count) để tránh lazy-load
+        @property trong async context.
+        """
         try:
-            q = select(Classroom).where(Classroom.is_active == True)
+            # Subquery đếm số enrollment đang active theo classroom_id
+            enroll_count_sq = (
+                select(
+                    StudentClassEnrollment.classroom_id,
+                    func.count(StudentClassEnrollment.id).label("cnt"),
+                )
+                .where(
+                    StudentClassEnrollment.status == EnrollmentStatus.ACTIVE,
+                    StudentClassEnrollment.is_active == True,
+                )
+                .group_by(StudentClassEnrollment.classroom_id)
+                .subquery()
+            )
+
+            q_base = select(Classroom).where(Classroom.is_active == True)
             if params.search:
                 term = f"%{params.search}%"
-                q = q.where(or_(Classroom.class_code.ilike(term), Classroom.class_name.ilike(term)))
+                q_base = q_base.where(
+                    or_(Classroom.class_code.ilike(term), Classroom.class_name.ilike(term))
+                )
             if params.class_type:
-                q = q.where(Classroom.class_type == params.class_type)
+                q_base = q_base.where(Classroom.class_type == params.class_type)
             if params.academic_year:
-                q = q.where(Classroom.academic_year == params.academic_year)
+                q_base = q_base.where(Classroom.academic_year == params.academic_year)
             if params.grade_level:
-                q = q.where(Classroom.grade_level == params.grade_level)
+                q_base = q_base.where(Classroom.grade_level == params.grade_level)
             if params.homeroom_teacher_id:
-                q = q.where(Classroom.homeroom_teacher_id == params.homeroom_teacher_id)
+                q_base = q_base.where(Classroom.homeroom_teacher_id == params.homeroom_teacher_id)
 
-            count_result = await self._s.execute(select(func.count()).select_from(q.subquery()))
+            count_result = await self._s.execute(
+                select(func.count()).select_from(q_base.subquery())
+            )
             total = count_result.scalar_one()
 
             offset = (params.page - 1) * params.page_size
-            rows = await self._s.execute(
-                q.order_by(Classroom.academic_year.desc(), Classroom.class_code.asc())
-                 .offset(offset).limit(params.page_size)
+            q_paged = (
+                select(Classroom, func.coalesce(enroll_count_sq.c.cnt, 0).label("enrollment_count"))
+                .outerjoin(enroll_count_sq, Classroom.id == enroll_count_sq.c.classroom_id)
+                .where(Classroom.is_active == True)
             )
-            return list(rows.scalars().all()), total
+            if params.search:
+                term = f"%{params.search}%"
+                q_paged = q_paged.where(
+                    or_(Classroom.class_code.ilike(term), Classroom.class_name.ilike(term))
+                )
+            if params.class_type:
+                q_paged = q_paged.where(Classroom.class_type == params.class_type)
+            if params.academic_year:
+                q_paged = q_paged.where(Classroom.academic_year == params.academic_year)
+            if params.grade_level:
+                q_paged = q_paged.where(Classroom.grade_level == params.grade_level)
+            if params.homeroom_teacher_id:
+                q_paged = q_paged.where(Classroom.homeroom_teacher_id == params.homeroom_teacher_id)
+
+            rows = await self._s.execute(
+                q_paged.order_by(Classroom.academic_year.desc(), Classroom.class_code.asc())
+                       .offset(offset).limit(params.page_size)
+            )
+            return [(row.Classroom, row.enrollment_count) for row in rows], total
         except SQLAlchemyError as exc:
             raise DatabaseQueryException(operation="list_classrooms", reason=str(exc)) from exc
 
