@@ -140,34 +140,33 @@ async def update_enrollment_status(
 # Enrollment (nested under classroom_id) – phải đứng TRƯỚC /{class_code}
 # ---------------------------------------------------------------------------
 
-@router.post("/{classroom_id}/enrollments", status_code=201,
+@router.post("/{class_code}/enrollments", status_code=201,
              summary="Đăng ký học sinh vào lớp")
 async def create_enrollment(
-    classroom_id: int,
+    class_code: str,
     data: EnrollmentCreateRequest,
     service: ClassroomService = Depends(get_service),
 ) -> APIResponse[EnrollmentResponse]:
-    data.classroom_id = classroom_id
-    result = await service.create_enrollment(data)
+    result = await service.create_enrollment_by_code(class_code, data)
     return APIResponse.created(
         data=result.model_dump(),
         message="Enrollment Created",
-        detail=f"Student {result.student_id} enrolled in classroom {classroom_id}",
+        detail=f"Student {result.student_id} enrolled in classroom '{class_code}'",
     )
 
 
-@router.get("/{classroom_id}/enrollments", status_code=200,
+@router.get("/{class_code}/enrollments", status_code=200,
             summary="Danh sách học sinh trong lớp")
 async def list_class_enrollments(
-    classroom_id: int,
+    class_code: str,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     service: ClassroomService = Depends(get_service),
 ) -> APIResponse[EnrollmentListResponse]:
-    result = await service.list_enrollments_by_classroom(classroom_id, page, page_size)
+    result = await service.list_enrollments_by_class_code(class_code, page, page_size)
     return APIResponse.success(
         data=result.model_dump(),
-        detail=f"Retrieved {result.total} enrollment(s) in classroom {classroom_id}",
+        detail=f"Retrieved {result.total} enrollment(s) in classroom '{class_code}'",
     )
 
 

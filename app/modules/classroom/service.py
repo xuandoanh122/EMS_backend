@@ -149,6 +149,25 @@ class ClassroomService:
     # Enrollment CRUD
     # ------------------------------------------------------------------
 
+    async def create_enrollment_by_code(
+        self, class_code: str, data: EnrollmentCreateRequest
+    ) -> EnrollmentResponse:
+        """Enroll student bằng class_code (dùng cho API endpoint /{class_code}/enrollments)."""
+        classroom = await self._repo.get_classroom_by_code(class_code)
+        if not classroom:
+            raise ClassroomNotFoundException(identifier=class_code)
+        data.classroom_id = classroom.id
+        return await self.create_enrollment(data)
+
+    async def list_enrollments_by_class_code(
+        self, class_code: str, page: int = 1, page_size: int = 50
+    ) -> EnrollmentListResponse:
+        """List enrollments bằng class_code (dùng cho API endpoint /{class_code}/enrollments)."""
+        classroom = await self._repo.get_classroom_by_code(class_code)
+        if not classroom:
+            raise ClassroomNotFoundException(identifier=class_code)
+        return await self.list_enrollments_by_classroom(classroom.id, page, page_size)
+
     async def create_enrollment(self, data: EnrollmentCreateRequest) -> EnrollmentResponse:
         # Check classroom exists + capacity
         classroom = await self._repo.get_classroom_by_id(data.classroom_id)
