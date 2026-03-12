@@ -25,6 +25,8 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    Unicode,
+    UnicodeText,
 )
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.sql import func
@@ -105,14 +107,14 @@ class Student(Base):
     __tablename__ = "students"
 
     id            = Column(Integer, primary_key=True, autoincrement=True, index=True)
-    student_code  = Column(String(20),  unique=True, nullable=False, index=True)
-    full_name     = Column(String(150), nullable=False)
-    date_of_birth = Column(Date,        nullable=True)
-    gender        = Column(String(10),  nullable=True)
-    national_id   = Column(String(20),  unique=True, nullable=True, index=True)
-    email         = Column(String(200), unique=True, nullable=True, index=True)
-    phone_number  = Column(String(20),  nullable=True)
-    address       = Column(Text,        nullable=True)
+    student_code  = Column(String(20),   unique=True, nullable=False, index=True)
+    full_name     = Column(Unicode(150), nullable=False)
+    date_of_birth = Column(Date,         nullable=True)
+    gender        = Column(String(10),   nullable=True)
+    national_id   = Column(String(20),   unique=True, nullable=True, index=True)
+    email         = Column(String(200),  unique=True, nullable=True, index=True)
+    phone_number  = Column(String(20),   nullable=True)
+    address       = Column(UnicodeText,  nullable=True)
 
     enrollment_date = Column(Date, nullable=True)
     academic_status = Column(
@@ -121,16 +123,16 @@ class Student(Base):
         default=StudentStatus.ACTIVE,
         index=True,
     )
-    class_name   = Column(String(50),  nullable=True, index=True)
-    program_name = Column(String(200), nullable=True)
+    class_name   = Column(Unicode(50),  nullable=True, index=True)
+    program_name = Column(Unicode(200), nullable=True)
 
     # Parent / Guardian contact
-    parent_full_name = Column(String(150), nullable=True)
-    parent_phone     = Column(String(20),  nullable=True)
-    parent_email     = Column(String(200), nullable=True)
+    parent_full_name = Column(Unicode(150), nullable=True)
+    parent_phone     = Column(String(20),   nullable=True)
+    parent_email     = Column(String(200),  nullable=True)
 
     # Medical history
-    medical_notes = Column(Text, nullable=True)
+    medical_notes = Column(UnicodeText, nullable=True)
 
     # Soft-delete & audit timestamps
     is_active  = Column(Boolean,  nullable=False, default=True, index=True)
@@ -174,33 +176,33 @@ class StudentBackup(Base):
     __tablename__ = "students_backup"
 
     backup_id     = Column(Integer, primary_key=True, autoincrement=True)
-    backup_reason = Column(String(200), nullable=True)
+    backup_reason = Column(Unicode(200), nullable=True)
     backed_up_at  = Column(DateTime, nullable=False,
                            server_default=func.now(), index=True)
 
     # ── Mirrored student columns (all nullable for flexibility) ──────────
-    id            = Column(Integer,     nullable=True, index=True)
-    student_code  = Column(String(20),  nullable=True, index=True)
-    full_name     = Column(String(150), nullable=True)
-    date_of_birth = Column(Date,        nullable=True)
-    gender        = Column(String(10),  nullable=True)
-    national_id   = Column(String(20),  nullable=True)
-    email         = Column(String(200), nullable=True)
-    phone_number  = Column(String(20),  nullable=True)
-    address       = Column(Text,        nullable=True)
+    id            = Column(Integer,      nullable=True, index=True)
+    student_code  = Column(String(20),   nullable=True, index=True)
+    full_name     = Column(Unicode(150), nullable=True)
+    date_of_birth = Column(Date,         nullable=True)
+    gender        = Column(String(10),   nullable=True)
+    national_id   = Column(String(20),   nullable=True)
+    email         = Column(String(200),  nullable=True)
+    phone_number  = Column(String(20),   nullable=True)
+    address       = Column(UnicodeText,  nullable=True)
 
     enrollment_date = Column(Date, nullable=True)
     academic_status = Column(
         Enum(StudentStatus),
         nullable=True,
     )
-    class_name   = Column(String(50),  nullable=True)
-    program_name = Column(String(200), nullable=True)
+    class_name   = Column(Unicode(50),  nullable=True)
+    program_name = Column(Unicode(200), nullable=True)
 
-    parent_full_name = Column(String(150), nullable=True)
-    parent_phone     = Column(String(20),  nullable=True)
-    parent_email     = Column(String(200), nullable=True)
-    medical_notes    = Column(Text,        nullable=True)
+    parent_full_name = Column(Unicode(150), nullable=True)
+    parent_phone     = Column(String(20),   nullable=True)
+    parent_email     = Column(String(200),  nullable=True)
+    medical_notes    = Column(UnicodeText,  nullable=True)
 
     is_active  = Column(Boolean,  nullable=True)
     created_at = Column(DateTime, nullable=True)

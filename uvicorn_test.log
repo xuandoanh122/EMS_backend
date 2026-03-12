@@ -1,0 +1,8 @@
+2026-03-12 12:00:23,217 - ems - INFO - EMS Application initialized successfully
+INFO:     Started server process [12680]
+INFO:     Waiting for application startup.
+2026-03-12 12:00:23,218 - ems - INFO - EMS starting up…
+2026-03-12 12:00:23,302 - ems.database - INFO - \u2705 Connected to PRIMARY database (MSSQL @ localhost:1433/ems_db)
+2026-03-12 12:00:23,311 - ems.database - INFO - \U0001f4cb Database tables verified / created.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)

@@ -24,31 +24,26 @@ import os
 from pathlib import Path
 from typing import AsyncGenerator
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool, StaticPool
 
+# Đảm bảo .env luôn được load dù module bị import trước main.py
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
+
 logger = logging.getLogger("ems.database")
 
 # ---------------------------------------------------------------------------
-# Config – fill in .env or edit directly
+# Config – đọc lazy qua property để đảm bảo .env đã được load
 # ---------------------------------------------------------------------------
 
-MSSQL_HOST     = os.getenv("MSSQL_HOST",     "localhost")
-MSSQL_PORT     = os.getenv("MSSQL_PORT",     "1433")
-MSSQL_DATABASE = os.getenv("MSSQL_DATABASE", "ems_db")
-MSSQL_USERNAME = os.getenv("MSSQL_USERNAME", "")   # ← điền sau
-MSSQL_PASSWORD = os.getenv("MSSQL_PASSWORD", "")   # ← điền sau
-MSSQL_DRIVER   = os.getenv("MSSQL_DRIVER",   "ODBC+Driver+17+for+SQL+Server")
+def _cfg(key: str, default: str = "") -> str:
+    return os.getenv(key, default)
 
-# SQLite backup path (relative to project root)
-SQLITE_BACKUP_PATH = Path(os.getenv("SQLITE_BACKUP_PATH", "ems_backup.db"))
 
-# Pool settings (only for MSSQL)
-DB_POOL_SIZE    = int(os.getenv("DB_POOL_SIZE",    "10"))
-DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "20"))
-DB_POOL_TIMEOUT = int(os.getenv("DB_POOL_TIMEOUT", "30"))
+SQLITE_BACKUP_PATH = Path(_cfg("SQLITE_BACKUP_PATH", "ems_backup.db"))
 
 # ---------------------------------------------------------------------------
 # Connection strings
@@ -56,15 +51,27 @@ DB_POOL_TIMEOUT = int(os.getenv("DB_POOL_TIMEOUT", "30"))
 
 def _build_mssql_url() -> str:
     """Build async MSSQL URL for SQLAlchemy (aioodbc driver)."""
+    from urllib.parse import quote_plus
+    host     = _cfg("MSSQL_HOST",     "localhost")
+    port     = _cfg("MSSQL_PORT",     "1433")
+    database = _cfg("MSSQL_DATABASE", "ems_db")
+    username = _cfg("MSSQL_USERNAME", "ems_server")
+    password = _cfg("MSSQL_PASSWORD", "Maiyeuem123@")
+    driver   = _cfg("MSSQL_DRIVER",   "ODBC Driver 17 for SQL Server")
+
     auth = ""
-    if MSSQL_USERNAME and MSSQL_PASSWORD:
-        auth = f"{MSSQL_USERNAME}:{MSSQL_PASSWORD}@"
-    elif MSSQL_USERNAME:
-        auth = f"{MSSQL_USERNAME}@"
+    if username and password:
+        auth = f"{quote_plus(username)}:{quote_plus(password)}@"
+    elif username:
+        auth = f"{quote_plus(username)}@"
+
+    # Strip curly braces if present (e.g. "{ODBC Driver 17 for SQL Server}")
+    # then URL-encode spaces as + for the query string
+    driver = driver.strip("{}").replace(" ", "+")
 
     return (
-        f"mssql+aioodbc://{auth}{MSSQL_HOST}:{MSSQL_PORT}/{MSSQL_DATABASE}"
-        f"?driver={MSSQL_DRIVER}"
+        f"mssql+aioodbc://{auth}{host}:{port}/{database}"
+        f"?driver={driver}"
     )
 
 
@@ -85,9 +92,9 @@ _is_using_backup: bool = False
 def _create_mssql_engine():
     return create_async_engine(
         _build_mssql_url(),
-        pool_size=DB_POOL_SIZE,
-        max_overflow=DB_MAX_OVERFLOW,
-        pool_timeout=DB_POOL_TIMEOUT,
+        pool_size=int(_cfg("DB_POOL_SIZE", "10")),
+        max_overflow=int(_cfg("DB_MAX_OVERFLOW", "20")),
+        pool_timeout=int(_cfg("DB_POOL_TIMEOUT", "30")),
         pool_pre_ping=True,   # test connection before using from pool
         echo=False,
     )
@@ -121,7 +128,9 @@ async def init_db() -> None:
         _async_engine = engine
         _is_using_backup = False
         logger.info("✅ Connected to PRIMARY database (MSSQL @ %s:%s/%s)",
-                    MSSQL_HOST, MSSQL_PORT, MSSQL_DATABASE)
+                    _cfg("MSSQL_HOST", "localhost"),
+                    _cfg("MSSQL_PORT", "1433"),
+                    _cfg("MSSQL_DATABASE", "ems_db"))
 
     except Exception as primary_exc:
         logger.warning(
@@ -150,8 +159,12 @@ async def init_db() -> None:
 
 async def _create_tables() -> None:
     """Create all tables that are registered on the metadata."""
-    # Import here to avoid circular imports; entity registers on Base.metadata
+    # Import here to avoid circular imports; all entities share the same Base
     from app.modules.student.entity import Base as StudentBase
+    import app.modules.teacher.entity    # noqa: F401 – registers Teacher
+    import app.modules.classroom.entity  # noqa: F401 – registers Classroom, StudentClassEnrollment
+    import app.modules.salary.entity     # noqa: F401 – registers SalaryGrade, BonusPolicy, MonthlyPayroll, PayrollBonusDetail
+    import app.modules.grading.entity    # noqa: F401 – registers Subject, ClassSubject, GradeComponent, StudentGrade, GradeAuditLog, SemesterAverage
 
     async with _async_engine.begin() as conn:
         await conn.run_sync(StudentBase.metadata.create_all)

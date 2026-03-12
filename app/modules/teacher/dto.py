@@ -1,0 +1,205 @@
+"""
+Teacher DTOs (Data Transfer Objects) – Pydantic schemas.
+
+Defines:
+  - TeacherCreateRequest        : payload for POST /teachers
+  - TeacherUpdateRequest        : payload for PATCH /teachers/{teacher_code}
+  - TeacherStatusUpdateRequest  : payload for PATCH /teachers/{teacher_code}/status
+  - TeacherResponse             : single teacher returned to client
+  - TeacherListResponse         : paginated list wrapper
+  - TeacherQueryParams          : query filters for listing teachers
+"""
+
+from datetime import date, datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from app.modules.teacher.entity import TeacherStatus
+
+
+# ---------------------------------------------------------------------------
+# Shared base – fields used by both Create and Update
+# ---------------------------------------------------------------------------
+
+class _TeacherBase(BaseModel):
+    full_name: Optional[str] = Field(
+        None, max_length=150, description="Full name of the teacher"
+    )
+    date_of_birth: Optional[date] = Field(None, description="Date of birth (YYYY-MM-DD)")
+    gender: Optional[str] = Field(None, description="'male' | 'female' | 'other'")
+    national_id: Optional[str] = Field(
+        None, max_length=20, description="National ID / CCCD number"
+    )
+    email: Optional[EmailStr] = Field(None, description="Teacher work email")
+    phone_number: Optional[str] = Field(
+        None, max_length=20, description="Contact phone number"
+    )
+    address: Optional[str] = Field(None, description="Permanent address")
+    specialization: Optional[str] = Field(
+        None, max_length=200, description="Subject / field of expertise"
+    )
+    qualification: Optional[str] = Field(
+        None, max_length=200, description="Highest academic qualification (e.g. 'Thạc sĩ')"
+    )
+    department: Optional[str] = Field(
+        None, max_length=200, description="Department name"
+    )
+
+    @field_validator("gender")
+    @classmethod
+    def validate_gender(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ("male", "female", "other"):
+            raise ValueError("gender must be 'male', 'female', or 'other'")
+        return v
+
+
+# ---------------------------------------------------------------------------
+# Create Request
+# ---------------------------------------------------------------------------
+
+class TeacherCreateRequest(_TeacherBase):
+    """Payload for POST /teachers – create a new teacher profile."""
+
+    teacher_code: str = Field(
+        ...,
+        min_length=1,
+        max_length=20,
+        description="Unique teacher business code (e.g. 'GV2024001')",
+    )
+    full_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=150,
+        description="Full name of the teacher (required on create)",
+    )
+    join_date: Optional[date] = Field(None, description="Date joined the institution")
+    employment_status: TeacherStatus = Field(
+        default=TeacherStatus.ACTIVE,
+        description="Initial employment status",
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "teacher_code": "GV2024001",
+                "full_name": "Tran Thi Mai",
+                "date_of_birth": "1985-03-20",
+                "gender": "female",
+                "email": "mai.tran@school.edu.vn",
+                "phone_number": "0987654321",
+                "join_date": "2024-09-01",
+                "specialization": "Toán học",
+                "qualification": "Thạc sĩ",
+                "department": "Khoa học tự nhiên",
+            }
+        }
+
+
+# ---------------------------------------------------------------------------
+# Update Request  (all fields optional – PATCH semantics)
+# ---------------------------------------------------------------------------
+
+class TeacherUpdateRequest(_TeacherBase):
+    """
+    Payload for PATCH /teachers/{teacher_code} – partial update.
+    Only fields provided will be updated.
+    """
+
+    join_date: Optional[date] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "phone_number": "0909999888",
+                "address": "456 Le Loi, Q1, TP.HCM",
+                "department": "Khoa học xã hội",
+            }
+        }
+
+
+# ---------------------------------------------------------------------------
+# Status Update Request
+# ---------------------------------------------------------------------------
+
+class TeacherStatusUpdateRequest(BaseModel):
+    """Payload for PATCH /teachers/{teacher_code}/status – change employment status."""
+
+    new_status: TeacherStatus = Field(..., description="Target employment status")
+    reason: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="Reason for the status change (optional but recommended)",
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "new_status": "on_leave",
+                "reason": "Nghỉ thai sản 6 tháng",
+            }
+        }
+
+
+# ---------------------------------------------------------------------------
+# Response Schema
+# ---------------------------------------------------------------------------
+
+class TeacherResponse(BaseModel):
+    """Single teacher response DTO."""
+
+    id: int
+    teacher_code: str
+    full_name: str
+    date_of_birth: Optional[date]
+    gender: Optional[str]
+    national_id: Optional[str]
+    email: Optional[str]
+    phone_number: Optional[str]
+    address: Optional[str]
+    specialization: Optional[str]
+    qualification: Optional[str]
+    join_date: Optional[date]
+    employment_status: TeacherStatus
+    department: Optional[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Paginated List Response
+# ---------------------------------------------------------------------------
+
+class TeacherListResponse(BaseModel):
+    """Paginated list of teachers."""
+
+    items: List[TeacherResponse]
+    total: int = Field(..., description="Total number of matching records")
+    page: int = Field(..., description="Current page number (1-indexed)")
+    page_size: int = Field(..., description="Number of items per page")
+    total_pages: int = Field(..., description="Total number of pages")
+
+
+# ---------------------------------------------------------------------------
+# Query Parameters for listing teachers
+# ---------------------------------------------------------------------------
+
+class TeacherQueryParams(BaseModel):
+    """Filters and pagination for GET /teachers."""
+
+    search: Optional[str] = Field(
+        None,
+        description="Search by teacher_code, full_name, or email",
+    )
+    employment_status: Optional[TeacherStatus] = Field(
+        None, description="Filter by employment status"
+    )
+    department: Optional[str] = Field(None, description="Filter by department")
+    specialization: Optional[str] = Field(None, description="Filter by specialization")
+    page: int = Field(default=1, ge=1, description="Page number (starts at 1)")
+    page_size: int = Field(
+        default=20, ge=1, le=100, description="Items per page (max 100)"
+    )

@@ -7,8 +7,13 @@ instance, registers exception handlers, and includes module routers.
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
+
+# Load .env từ thư mục gốc project (d:\EMS_backend\.env)
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
 from app.core.database import close_db, init_db
 from app.core.handlers.exception_handler import register_exception_handlers
@@ -63,15 +68,21 @@ def create_app() -> FastAPI:
 
     # ── Include module routers ───────────────────────────────────────────
     from app.modules.student.controller import router as student_router
+    from app.modules.teacher.controller import router as teacher_router
+    from app.modules.classroom.controller import router as classroom_router
+    from app.modules.grading.controller import router as grading_router
+    from app.modules.salary.controller import router as salary_router
 
     app.include_router(student_router, prefix="/api/v1/students", tags=["Students"])
+    app.include_router(teacher_router, prefix="/api/v1/teachers", tags=["Teachers"])
+    app.include_router(classroom_router, prefix="/api/v1/classrooms", tags=["Classrooms"])
+    app.include_router(grading_router, prefix="/api/v1/grading", tags=["Grading"])
+    app.include_router(salary_router, prefix="/api/v1/salary", tags=["Salary"])
 
     # Uncomment as you build each module:
     # from app.modules.auth.controller import router as auth_router
-    # from app.modules.teacher.controller import router as teacher_router
     # from app.modules.facility.controller import router as facility_router
     # app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
-    # app.include_router(teacher_router, prefix="/api/v1/teachers", tags=["Teachers"])
     # app.include_router(facility_router, prefix="/api/v1/facilities", tags=["Facilities"])
 
     # ── Health check endpoint ────────────────────────────────────────────

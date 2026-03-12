@@ -102,6 +102,21 @@ def register_exception_handlers(app: FastAPI) -> None:
         """
         Handle generic Starlette/FastAPI HTTP exceptions (404, 405, etc.).
         """
+        import http
+
+        # Starlette ≥ 0.37 fills detail with the HTTP reason phrase when None
+        # is passed, so we detect that case by comparing against the default phrase.
+        raw_detail = exc.detail
+        try:
+            http_phrase = http.HTTPStatus(exc.status_code).phrase
+        except ValueError:
+            http_phrase = None
+
+        if raw_detail in (None, "", http_phrase):
+            detail = "An HTTP error occurred"
+        else:
+            detail = str(raw_detail)
+
         logger.warning(
             "HTTPException [%s] %s | Path: %s",
             exc.status_code,
@@ -114,7 +129,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             content={
                 "code": exc.status_code,
                 "message": "HTTP Error",
-                "detail": str(exc.detail) if exc.detail else "An HTTP error occurred",
+                "detail": detail,
                 "data": None,
             },
         )

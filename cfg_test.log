@@ -1,0 +1,4 @@
+HOST=localhost
+USER=ems_server
+PASS_LEN=12
+URL=mssql+aioodbc://ems_server:Maiyeuem123%40@localhost:1433/ems_db?driver=ODBC+Driv

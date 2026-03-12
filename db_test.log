@@ -1,0 +1,4 @@
+URL: mssql+aioodbc://ems_server:Maiyeuem123%40@localhost:1433/ems
+BACKUP: False
+ERROR:asyncio:Unclosed connection
+connection: <aioodbc.connection.Connection object at 0x000002D2C51F67B0>

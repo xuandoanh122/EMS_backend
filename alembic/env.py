@@ -45,9 +45,9 @@ def _get_url() -> str:
     host     = os.getenv("MSSQL_HOST",     "localhost")
     port     = os.getenv("MSSQL_PORT",     "1433")
     db       = os.getenv("MSSQL_DATABASE", "ems_db")
-    user     = os.getenv("MSSQL_USERNAME", "")
-    pwd      = os.getenv("MSSQL_PASSWORD", "")
-    driver   = os.getenv("MSSQL_DRIVER",   "ODBC+Driver+17+for+SQL+Server")
+    user     = os.getenv("MSSQL_USERNAME", "ems_server")
+    pwd      = os.getenv("MSSQL_PASSWORD", "Maiyeuem123@")
+    driver   = os.getenv("MSSQL_DRIVER",   "{ODBC Driver 17 for SQL Server}")
 
     auth = f"{user}:{pwd}@" if user and pwd else (f"{user}@" if user else "")
     return (
