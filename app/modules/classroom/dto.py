@@ -84,6 +84,7 @@ class ClassroomResponse(BaseModel):
     grade_level: int
     homeroom_teacher_id: Optional[int]
     max_capacity: int
+    current_enrollment: int = 0  # Tính từ enrollments (lazy-loaded @property)
     room_number: Optional[str]
     description: Optional[str]
     is_active: bool
