@@ -82,12 +82,14 @@ def create_app() -> FastAPI:
     from app.modules.classroom.controller import router as classroom_router
     from app.modules.grading.controller import router as grading_router
     from app.modules.salary.controller import router as salary_router
+    from app.modules.dashboard.controller import router as dashboard_router
 
-    app.include_router(student_router, prefix="/api/v1/students", tags=["Students"])
-    app.include_router(teacher_router, prefix="/api/v1/teachers", tags=["Teachers"])
+    app.include_router(student_router,   prefix="/api/v1/students",   tags=["Students"])
+    app.include_router(teacher_router,   prefix="/api/v1/teachers",   tags=["Teachers"])
     app.include_router(classroom_router, prefix="/api/v1/classrooms", tags=["Classrooms"])
-    app.include_router(grading_router, prefix="/api/v1/grading", tags=["Grading"])
-    app.include_router(salary_router, prefix="/api/v1/salary", tags=["Salary"])
+    app.include_router(grading_router,   prefix="/api/v1/grading",    tags=["Grading"])
+    app.include_router(salary_router,    prefix="/api/v1/salary",     tags=["Salary"])
+    app.include_router(dashboard_router, prefix="/api/v1/dashboard",  tags=["Dashboard"])
 
     # Uncomment as you build each module:
     # from app.modules.auth.controller import router as auth_router
