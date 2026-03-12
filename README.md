@@ -361,21 +361,188 @@ GET    /api/v1/salary/payroll/export/{month}           # Xuất Excel tất cả
 
 ---
 
-## Endpoints hiện tại
+## Endpoints hiện tại (đã triển khai)
+
+> Cập nhật lần cuối: 2026-03-12 | Tổng: **54 endpoints**
+> Xem tài liệu đầy đủ tại: `GET /docs` (Swagger UI) hoặc `GET /redoc`
+
+---
+
+### System
 
 | Method | URL | Mô tả |
 |--------|-----|-------|
 | GET | `/health` | Kiểm tra kết nối DB |
 | GET | `/docs` | Swagger UI |
-| POST | `/api/v1/students` | Tạo học sinh |
-| GET | `/api/v1/students` | Danh sách học sinh |
+| GET | `/redoc` | ReDoc |
+
+---
+
+### Dashboard
+
+| Method | URL | Mô tả |
+|--------|-----|-------|
+| GET | `/api/v1/dashboard/stats` | Tổng quan: tổng HS/GV/lớp, active, 5 bản ghi mới nhất |
+
+**Response mẫu:**
+```json
+{
+  "total_students": 120,
+  "total_teachers": 15,
+  "total_classrooms": 8,
+  "active_students": 110,
+  "active_teachers": 13,
+  "recent_students": [...],
+  "recent_teachers": [...]
+}
+```
+
+---
+
+### Học sinh (`/api/v1/students`)
+
+| Method | URL | Mô tả |
+|--------|-----|-------|
+| POST | `/api/v1/students` | Tạo học sinh mới |
+| GET | `/api/v1/students` | Danh sách học sinh (filter: search, academic_status, class_name, program_name; phân trang) |
 | GET | `/api/v1/students/{student_code}` | Chi tiết học sinh |
-| PATCH | `/api/v1/students/{student_code}` | Cập nhật học sinh |
-| PATCH | `/api/v1/students/{student_code}/status` | Đổi trạng thái |
-| DELETE | `/api/v1/students/{student_code}` | Xóa mềm |
-| POST | `/api/v1/teachers` | Tạo giáo viên |
-| GET | `/api/v1/teachers` | Danh sách giáo viên |
+| PATCH | `/api/v1/students/{student_code}` | Cập nhật hồ sơ học sinh |
+| PATCH | `/api/v1/students/{student_code}/status` | Đổi trạng thái học vụ (`active→suspended/preserved/graduated`) |
+| DELETE | `/api/v1/students/{student_code}` | Xóa mềm (`is_active = false`) |
+
+---
+
+### Giáo viên (`/api/v1/teachers`)
+
+| Method | URL | Mô tả |
+|--------|-----|-------|
+| POST | `/api/v1/teachers` | Tạo giáo viên mới |
+| GET | `/api/v1/teachers` | Danh sách giáo viên (filter: search, employment_status, department, specialization; phân trang) |
 | GET | `/api/v1/teachers/{teacher_code}` | Chi tiết giáo viên |
-| PATCH | `/api/v1/teachers/{teacher_code}` | Cập nhật giáo viên |
-| PATCH | `/api/v1/teachers/{teacher_code}/status` | Đổi trạng thái |
+| PATCH | `/api/v1/teachers/{teacher_code}` | Cập nhật hồ sơ giáo viên |
+| PATCH | `/api/v1/teachers/{teacher_code}/status` | Đổi trạng thái (`active→on_leave/resigned/retired`) |
 | DELETE | `/api/v1/teachers/{teacher_code}` | Xóa mềm |
+
+---
+
+### Lớp học (`/api/v1/classrooms`)
+
+| Method | URL | Mô tả |
+|--------|-----|-------|
+| POST | `/api/v1/classrooms` | Tạo lớp học mới |
+| GET | `/api/v1/classrooms` | Danh sách lớp học (filter: search, class_type, academic_year, grade_level, homeroom_teacher_id; phân trang) |
+| GET | `/api/v1/classrooms/{class_code}` | Chi tiết lớp học (bao gồm `current_enrollment`) |
+| PATCH | `/api/v1/classrooms/{class_code}` | Cập nhật thông tin lớp |
+| DELETE | `/api/v1/classrooms/{class_code}` | Xóa mềm lớp học |
+| POST | `/api/v1/classrooms/{classroom_id}/enrollments` | Đăng ký học sinh vào lớp |
+| GET | `/api/v1/classrooms/{classroom_id}/enrollments` | Danh sách học sinh trong lớp (phân trang) |
+| GET | `/api/v1/classrooms/enrollments/{enrollment_id}` | Chi tiết 1 enrollment |
+| PATCH | `/api/v1/classrooms/enrollments/{enrollment_id}` | Cập nhật ghi chú enrollment |
+| PATCH | `/api/v1/classrooms/enrollments/{enrollment_id}/status` | Đổi trạng thái enrollment (`transferred/withdrawn/completed`) |
+| GET | `/api/v1/classrooms/students/{student_id}/enrollments` | Tất cả lớp mà học sinh đã/đang học |
+
+---
+
+### Điểm số (`/api/v1/grading`)
+
+#### Môn học
+
+| Method | URL | Mô tả |
+|--------|-----|-------|
+| POST | `/api/v1/grading/subjects` | Tạo môn học |
+| GET | `/api/v1/grading/subjects` | Danh sách môn học |
+| GET | `/api/v1/grading/subjects/{subject_code}` | Chi tiết môn học |
+| PATCH | `/api/v1/grading/subjects/{subject_code}` | Cập nhật môn học |
+
+#### Phân công môn học – lớp – giáo viên
+
+| Method | URL | Mô tả |
+|--------|-----|-------|
+| POST | `/api/v1/grading/class-subjects` | Phân công môn học cho lớp + giáo viên |
+| GET | `/api/v1/grading/class-subjects` | Danh sách phân công (filter: classroom_id, teacher_id, academic_year, semester) |
+| GET | `/api/v1/grading/class-subjects/{cs_id}` | Chi tiết phân công |
+| PATCH | `/api/v1/grading/class-subjects/{cs_id}` | Cập nhật phân công (thay giáo viên) |
+
+#### Cấu hình thành phần điểm
+
+| Method | URL | Mô tả |
+|--------|-----|-------|
+| POST | `/api/v1/grading/grade-components` | Tạo thành phần điểm (miệng / 15p / 1 tiết / HK) |
+| GET | `/api/v1/grading/grade-components/{class_subject_id}` | Danh sách thành phần điểm của 1 class-subject |
+| PATCH | `/api/v1/grading/grade-components/{gc_id}` | Cập nhật thành phần điểm |
+
+#### Nhập & quản lý điểm
+
+| Method | URL | Mô tả |
+|--------|-----|-------|
+| POST | `/api/v1/grading/grades` | Nhập điểm cho 1 học sinh |
+| POST | `/api/v1/grading/grades/bulk` | Nhập điểm hàng loạt (1 cột điểm, nhiều học sinh) |
+| GET | `/api/v1/grading/grades/{grade_id}` | Chi tiết 1 cột điểm |
+| PATCH | `/api/v1/grading/grades/{grade_id}` | Sửa điểm (bắt buộc có lý do – ghi audit log) |
+| GET | `/api/v1/grading/grades/{grade_id}/audit-logs` | Lịch sử thay đổi điểm |
+| GET | `/api/v1/grading/class-subjects/{cs_id}/grades` | Tất cả điểm trong 1 class-subject |
+
+#### Báo cáo & thống kê
+
+| Method | URL | Mô tả |
+|--------|-----|-------|
+| GET | `/api/v1/grading/students/{student_id}/report` | Báo cáo điểm học sinh theo học kỳ |
+| GET | `/api/v1/grading/class-subjects/{cs_id}/statistics` | Thống kê lớp: TB/max/min, phân bố xếp loại |
+
+---
+
+### Lương giáo viên (`/api/v1/salary`)
+
+#### Ngạch lương
+
+| Method | URL | Mô tả |
+|--------|-----|-------|
+| POST | `/api/v1/salary/grades` | Tạo ngạch lương (bằng cấp × thâm niên) |
+| GET | `/api/v1/salary/grades` | Danh sách ngạch lương |
+| GET | `/api/v1/salary/grades/{grade_code}` | Chi tiết ngạch lương |
+| PATCH | `/api/v1/salary/grades/{grade_code}` | Cập nhật ngạch lương |
+
+#### Chính sách thưởng
+
+| Method | URL | Mô tả |
+|--------|-----|-------|
+| POST | `/api/v1/salary/bonus-policies` | Tạo chính sách thưởng |
+| GET | `/api/v1/salary/bonus-policies` | Danh sách chính sách thưởng |
+| GET | `/api/v1/salary/bonus-policies/{policy_code}` | Chi tiết chính sách thưởng |
+| PATCH | `/api/v1/salary/bonus-policies/{policy_code}` | Cập nhật chính sách thưởng |
+
+#### Bảng lương tháng
+
+| Method | URL | Mô tả |
+|--------|-----|-------|
+| POST | `/api/v1/salary/payrolls` | Tạo bảng lương tháng |
+| GET | `/api/v1/salary/payrolls` | Danh sách bảng lương (filter: teacher_id, status, month_from, month_to) |
+| GET | `/api/v1/salary/payrolls/{payroll_id}` | Chi tiết bảng lương |
+| PATCH | `/api/v1/salary/payrolls/{payroll_id}` | Cập nhật bảng lương (chỉ khi chưa `paid`) |
+| PATCH | `/api/v1/salary/payrolls/{payroll_id}/status` | Duyệt/thanh toán (`draft → confirmed → paid`) |
+| POST | `/api/v1/salary/payrolls/{payroll_id}/bonuses` | Thêm khoản thưởng vào bảng lương |
+
+---
+
+## Hướng phát triển tiếp theo
+
+### Ưu tiên cao
+| # | Tính năng | Mô tả |
+|---|-----------|-------|
+| 1 | **Auth / JWT** | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`. Bắt buộc để bảo vệ tất cả endpoint hiện tại bằng `Depends(get_current_user)` |
+| 2 | **RBAC (phân quyền)** | Role: `admin`, `teacher`, `accountant`. Giáo viên chỉ nhập điểm lớp của mình; kế toán mới duyệt lương |
+| 3 | **Tính lương tự động** | `POST /salary/payrolls/generate/{month}` – auto tính toàn bộ GV trong 1 tháng từ ngạch lương + số tiết |
+
+### Ưu tiên trung bình
+| # | Tính năng | Mô tả |
+|---|-----------|-------|
+| 4 | **Điểm TB học kỳ** | `POST /grading/class-subjects/{cs_id}/calculate-averages` – tính và lưu vào `semester_averages` |
+| 5 | **Xuất Excel / PDF** | Bảng lương tháng, bảng điểm lớp |
+| 6 | **Chấm công GV** | QR Code / Geolocation check-in, gắn với số tiết thực dạy |
+
+### Ưu tiên thấp
+| # | Tính năng | Mô tả |
+|---|-----------|-------|
+| 7 | **Cơ sở vật chất** | Quản lý phòng học, thiết bị, đặt phòng |
+| 8 | **Thông báo** | Push/Email khi bảng lương được duyệt, điểm mới nhập |
+| 9 | **Redis Cache** | Cache dashboard stats, danh sách môn học ít thay đổi |
