@@ -296,6 +296,27 @@ async def get_grade_audit_logs(
     )
 
 
+@router.get("/class-subjects/{cs_id}/grade-matrix", status_code=200,
+            summary="Ma trận điểm dạng Grid (hàng=HS, cột=thành phần điểm)")
+async def get_grade_matrix(
+    cs_id: int,
+    service: GradingService = Depends(get_service),
+) -> APIResponse:
+    """
+    Trả về toàn bộ ma trận điểm cho 1 class-subject trong 1 API call.
+    FE dùng để render bảng điểm dạng Excel (GradeMatrixTable component).
+    - Hàng = học sinh đang enrolled
+    - Cột = thành phần điểm (grade_components)
+    - Ô = {grade_id, score} hoặc null nếu chưa nhập
+    - weighted_average: tính nếu đủ điểm tất cả components
+    """
+    result = await service.get_grade_matrix(cs_id)
+    return APIResponse.success(
+        data=result,
+        detail=f"Grade matrix for class-subject {cs_id}",
+    )
+
+
 @router.get("/class-subjects/{cs_id}/grades", status_code=200,
             summary="Tất cả điểm trong 1 class-subject")
 async def list_grades_by_class_subject(

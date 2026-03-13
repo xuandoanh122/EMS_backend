@@ -108,6 +108,10 @@ class ClassroomQueryParams(BaseModel):
     academic_year: Optional[str] = None
     grade_level: Optional[int] = Field(None, ge=1, le=13)
     homeroom_teacher_id: Optional[int] = None
+    has_capacity: Optional[bool] = Field(
+        None,
+        description="true = lớp chưa đầy (current_enrollment < max_capacity)",
+    )
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=100)
 
@@ -118,7 +122,7 @@ class ClassroomQueryParams(BaseModel):
 
 class EnrollmentCreateRequest(BaseModel):
     student_id: int = Field(..., description="ID học sinh")
-    classroom_id: int = Field(..., description="ID lớp học")
+    classroom_id: Optional[int] = Field(None, description="ID lớp học (được set từ path param)")
     enrollment_type: EnrollmentType = Field(default=EnrollmentType.PRIMARY)
     enrolled_date: Optional[date] = None
     notes: Optional[str] = Field(None, max_length=300)
@@ -127,9 +131,8 @@ class EnrollmentCreateRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "student_id": 1,
-                "classroom_id": 2,
                 "enrollment_type": "primary",
-                "enrolled_date": "2024-09-01",
+                "enrolled_date": "2026-03-01",
             }
         }
 

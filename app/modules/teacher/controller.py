@@ -19,6 +19,7 @@ from app.core.database import get_async_session
 from app.core.response import APIResponse
 from app.modules.teacher.dto import (
     TeacherCreateRequest,
+    TeacherDetailResponse,
     TeacherListResponse,
     TeacherQueryParams,
     TeacherResponse,
@@ -48,7 +49,7 @@ def get_teacher_service(
 @router.post(
     "",
     status_code=201,
-    summary="Create a new teacher",
+    summary="Tạo giáo viên mới (teacher_code tự sinh – FE không cần gửi)",
     response_description="The created teacher profile",
 )
 async def create_teacher(
@@ -56,17 +57,17 @@ async def create_teacher(
     service: TeacherService = Depends(get_teacher_service),
 ) -> APIResponse[TeacherResponse]:
     """
-    Create a new teacher profile.
+    Tạo giáo viên mới.
 
-    - **teacher_code** must be unique.
+    - **teacher_code** được BE tự sinh theo format `TchrYYMMxxx` – FE không gửi field này.
     - **email** must be unique if provided.
     - **national_id** must be unique if provided.
     """
     teacher = await service.create_teacher(data)
     return APIResponse.created(
         data=teacher.model_dump(),
-        message="Teacher Created",
-        detail=f"Teacher '{teacher.teacher_code}' has been created successfully",
+        message="Tạo giáo viên thành công",
+        detail=f"Giáo viên '{teacher.teacher_code}' đã được tạo",
     )
 
 
@@ -115,13 +116,13 @@ async def list_teachers(
 @router.get(
     "/{teacher_code}",
     status_code=200,
-    summary="Get a single teacher by teacher code",
-    response_description="Teacher profile",
+    summary="Chi tiết 1 giáo viên (bao gồm danh sách phân công dạy)",
+    response_description="Teacher profile with teaching assignments",
 )
 async def get_teacher(
     teacher_code: str,
     service: TeacherService = Depends(get_teacher_service),
-) -> APIResponse[TeacherResponse]:
+) -> APIResponse[TeacherDetailResponse]:
     teacher = await service.get_teacher(teacher_code)
     return APIResponse.success(
         data=teacher.model_dump(),

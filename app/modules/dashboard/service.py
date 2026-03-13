@@ -34,6 +34,7 @@ class DashboardService:
                 total_classrooms: int,
                 active_students: int,
                 active_teachers: int,
+                pending_enrollment_students: int,   # HS active nhưng chưa có lớp
                 recent_students: [...],   # 5 newest
                 recent_teachers: [...],   # 5 newest
             }
@@ -44,6 +45,7 @@ class DashboardService:
         total_classrooms  = await self._count_classrooms()
         active_students   = await self._count_active_students()
         active_teachers   = await self._count_active_teachers()
+        pending_enrollment = await self._count_pending_enrollment_students()
         recent_students   = await self._recent_students(limit=5)
         recent_teachers   = await self._recent_teachers(limit=5)
 
@@ -53,6 +55,7 @@ class DashboardService:
             "total_classrooms": total_classrooms,
             "active_students": active_students,
             "active_teachers": active_teachers,
+            "pending_enrollment_students": pending_enrollment,
             "recent_students": recent_students,
             "recent_teachers": recent_teachers,
         }
@@ -93,6 +96,30 @@ class DashboardService:
             select(func.count(Teacher.id)).where(
                 Teacher.is_active == True,
                 Teacher.employment_status == TeacherStatus.ACTIVE,
+            )
+        )
+        return result.scalar_one() or 0
+
+    async def _count_pending_enrollment_students(self) -> int:
+        """
+        Đếm HS đang active nhưng chưa có enrollment active nào.
+        Đây là HS 'chờ xếp lớp'.
+        """
+        from app.modules.classroom.entity import StudentClassEnrollment, EnrollmentStatus
+
+        enrolled_subq = (
+            select(StudentClassEnrollment.student_id)
+            .where(
+                StudentClassEnrollment.status == EnrollmentStatus.ACTIVE,
+                StudentClassEnrollment.is_active == True,
+            )
+            .scalar_subquery()
+        )
+        result = await self._session.execute(
+            select(func.count(Student.id)).where(
+                Student.is_active == True,
+                Student.academic_status == StudentStatus.ACTIVE,
+                Student.id.not_in(enrolled_subq),
             )
         )
         return result.scalar_one() or 0
