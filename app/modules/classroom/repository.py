@@ -246,19 +246,67 @@ class ClassroomRepository:
         classroom_id: int,
         page: int = 1,
         page_size: int = 50,
-    ) -> Tuple[List[StudentClassEnrollment], int]:
+    ) -> Tuple[List[dict], int]:
+        """
+        Trả về list dict gồm enrollment + student_name/student_code + class_code/class_name.
+        """
+        from app.modules.student.entity import Student
+
         try:
-            q = select(StudentClassEnrollment).where(
-                StudentClassEnrollment.classroom_id == classroom_id,
-                StudentClassEnrollment.is_active == True,
+            base_q = (
+                select(StudentClassEnrollment)
+                .where(
+                    StudentClassEnrollment.classroom_id == classroom_id,
+                    StudentClassEnrollment.is_active == True,
+                )
             )
-            count_result = await self._s.execute(select(func.count()).select_from(q.subquery()))
+            count_result = await self._s.execute(
+                select(func.count()).select_from(base_q.subquery())
+            )
             total = count_result.scalar_one()
+
             offset = (page - 1) * page_size
-            rows = await self._s.execute(
-                q.order_by(StudentClassEnrollment.id.asc()).offset(offset).limit(page_size)
+            joined_q = (
+                select(
+                    StudentClassEnrollment,
+                    Student.full_name.label("student_name"),
+                    Student.student_code.label("student_code"),
+                    Classroom.class_code.label("class_code"),
+                    Classroom.class_name.label("class_name"),
+                )
+                .join(Student, Student.id == StudentClassEnrollment.student_id)
+                .join(Classroom, Classroom.id == StudentClassEnrollment.classroom_id)
+                .where(
+                    StudentClassEnrollment.classroom_id == classroom_id,
+                    StudentClassEnrollment.is_active == True,
+                )
+                .order_by(Student.full_name.asc())
+                .offset(offset)
+                .limit(page_size)
             )
-            return list(rows.scalars().all()), total
+            rows = await self._s.execute(joined_q)
+
+            result = []
+            for row in rows:
+                enroll = row.StudentClassEnrollment
+                result.append({
+                    "id": enroll.id,
+                    "student_id": enroll.student_id,
+                    "classroom_id": enroll.classroom_id,
+                    "enrollment_type": enroll.enrollment_type,
+                    "status": enroll.status,
+                    "enrolled_date": enroll.enrolled_date,
+                    "left_date": enroll.left_date,
+                    "notes": enroll.notes,
+                    "is_active": enroll.is_active,
+                    "created_at": enroll.created_at,
+                    "updated_at": enroll.updated_at,
+                    "student_name": row.student_name,
+                    "student_code": row.student_code,
+                    "class_code": row.class_code,
+                    "class_name": row.class_name,
+                })
+            return result, total
         except SQLAlchemyError as exc:
             raise DatabaseQueryException(
                 operation="list_enrollments_by_classroom", reason=str(exc)

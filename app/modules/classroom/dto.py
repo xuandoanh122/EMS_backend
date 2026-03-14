@@ -171,6 +171,11 @@ class EnrollmentResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    # Joined info – None khi tạo mới (single enrollment response)
+    student_name: Optional[str] = None
+    student_code: Optional[str] = None
+    class_code: Optional[str] = None
+    class_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
