@@ -2,9 +2,9 @@
 Student Controller – FastAPI router layer.
 
 Defines all REST endpoints for student management:
-  POST   /students                         – Create student
+  POST   /students                         – Create student (auto-generate code + optional enroll)
   GET    /students                         – List students (paginated + filter)
-  GET    /students/{student_code}          – Get single student
+  GET    /students/{student_code}          – Get single student with enrollments
   PATCH  /students/{student_code}          – Partial update student profile
   PATCH  /students/{student_code}/status   – Update academic status
   DELETE /students/{student_code}          – Soft-delete student
@@ -26,6 +26,8 @@ from app.core.dependencies import require_role
 from app.core.response import APIResponse
 from app.modules.student.dto import (
     StudentCreateRequest,
+    StudentCreateResponse,
+    StudentDetailResponse,
     StudentListResponse,
     StudentQueryParams,
     StudentResponse,
@@ -56,25 +58,27 @@ def get_student_service(
 @router.post(
     "",
     status_code=201,
-    summary="Create a new student",
-    response_description="The created student profile",
+    summary="Tạo học sinh mới (student_code tự sinh – FE không cần gửi)",
+    response_description="Học sinh vừa tạo kèm kết quả xếp lớp",
 )
 async def create_student(
     data: StudentCreateRequest,
     service: StudentService = Depends(get_student_service),
-) -> APIResponse[StudentResponse]:
+) -> APIResponse[StudentCreateResponse]:
     """
-    Create a new student profile.
+    Tạo học sinh mới.
 
-    - **student_code** must be unique.
-    - **email** must be unique if provided.
-    - **national_id** must be unique if provided.
+    - **student_code** được BE tự sinh theo format `StudYYMMxxx` – FE không gửi field này.
+    - **class_ids** (optional): Danh sách classroom ID để enroll ngay khi tạo.
+      Nếu bỏ qua, học sinh ở trạng thái "chờ xếp lớp".
+    - Toàn bộ (tạo HS + xếp lớp) được bọc trong 1 DB Transaction.
+    - Nếu 1 lớp bị đầy → ghi lỗi partial vào response, KHÔNG rollback toàn bộ.
     """
-    student = await service.create_student(data)
+    result = await service.create_student(data)
     return APIResponse.created(
-        data=student.model_dump(),
-        message="Student Created",
-        detail=f"Student '{student.student_code}' has been created successfully",
+        data=result.model_dump(),
+        message="Tạo học sinh thành công",
+        detail=f"Học sinh '{result.student_code}' đã được tạo",
     )
 
 
@@ -85,27 +89,32 @@ async def create_student(
 @router.get(
     "",
     status_code=200,
-    summary="List students with filters and pagination",
+    summary="Danh sách học sinh (phân trang + lọc)",
     response_description="Paginated list of students",
 )
 async def list_students(
     search: Optional[str] = Query(
-        None, description="Search by student_code, full_name, or email"
+        None, description="Tìm theo student_code, full_name, hoặc email"
     ),
     academic_status: Optional[StudentStatus] = Query(
-        None, description="Filter by academic status"
+        None, description="Lọc theo trạng thái học vụ"
     ),
-    class_name: Optional[str] = Query(None, description="Filter by class name"),
-    program_name: Optional[str] = Query(None, description="Filter by program name"),
-    page: int = Query(1, ge=1, description="Page number (starts at 1)"),
-    page_size: int = Query(20, ge=1, le=100, description="Items per page (max 100)"),
+    has_enrollment: Optional[bool] = Query(
+        None,
+        description="true = đang có lớp, false = chưa có lớp (chờ xếp lớp)",
+    ),
+    classroom_id: Optional[int] = Query(
+        None, description="Lọc học sinh trong 1 lớp cụ thể (theo classroom ID)"
+    ),
+    page: int = Query(1, ge=1, description="Số trang (bắt đầu từ 1)"),
+    page_size: int = Query(20, ge=1, le=100, description="Số item mỗi trang (tối đa 100)"),
     service: StudentService = Depends(get_student_service),
 ) -> APIResponse[StudentListResponse]:
     params = StudentQueryParams(
         search=search,
         academic_status=academic_status,
-        class_name=class_name,
-        program_name=program_name,
+        has_enrollment=has_enrollment,
+        classroom_id=classroom_id,
         page=page,
         page_size=page_size,
     )
@@ -117,19 +126,19 @@ async def list_students(
 
 
 # ---------------------------------------------------------------------------
-# GET /students/{student_code}  – Get single
+# GET /students/{student_code}  – Get single (with enrollments)
 # ---------------------------------------------------------------------------
 
 @router.get(
     "/{student_code}",
     status_code=200,
-    summary="Get a single student by student code",
-    response_description="Student profile",
+    summary="Chi tiết 1 học sinh (bao gồm danh sách lớp đang học)",
+    response_description="Student profile with current enrollments",
 )
 async def get_student(
     student_code: str,
     service: StudentService = Depends(get_student_service),
-) -> APIResponse[StudentResponse]:
+) -> APIResponse[StudentDetailResponse]:
     student = await service.get_student(student_code)
     return APIResponse.success(
         data=student.model_dump(),
@@ -144,7 +153,7 @@ async def get_student(
 @router.patch(
     "/{student_code}",
     status_code=200,
-    summary="Partially update a student's profile",
+    summary="Cập nhật thông tin học sinh (partial update)",
     response_description="Updated student profile",
 )
 async def update_student(
@@ -153,8 +162,9 @@ async def update_student(
     service: StudentService = Depends(get_student_service),
 ) -> APIResponse[StudentResponse]:
     """
-    Update one or more fields of a student's profile.
-    Fields not included in the request body are left unchanged.
+    Cập nhật một hoặc nhiều field của học sinh.
+    Các field không gửi sẽ được giữ nguyên.
+    Lưu ý: KHÔNG cho phép sửa student_code. Thay đổi lớp học phải qua Enrollment API.
     """
     student = await service.update_student(student_code, data)
     return APIResponse.success(
@@ -170,7 +180,7 @@ async def update_student(
 @router.patch(
     "/{student_code}/status",
     status_code=200,
-    summary="Update a student's academic status",
+    summary="Thay đổi trạng thái học vụ",
     response_description="Student with updated academic status",
 )
 async def update_student_status(
@@ -179,13 +189,13 @@ async def update_student_status(
     service: StudentService = Depends(get_student_service),
 ) -> APIResponse[StudentResponse]:
     """
-    Change the academic status of a student.
+    Chuyển trạng thái học vụ của học sinh.
 
-    Valid transitions:
+    Các transition hợp lệ:
     - **active** → preserved | suspended | graduated
     - **preserved** → active | suspended
     - **suspended** → active
-    - **graduated** → *(no transitions – terminal state)*
+    - **graduated** → *(terminal – không chuyển được)*
     """
     student = await service.update_student_status(student_code, data)
     return APIResponse.success(
@@ -203,7 +213,7 @@ async def update_student_status(
 @router.delete(
     "/{student_code}",
     status_code=200,
-    summary="Soft-delete a student",
+    summary="Soft-delete học sinh (is_active = false)",
     response_description="Confirmation of deletion",
 )
 async def delete_student(
@@ -211,8 +221,8 @@ async def delete_student(
     service: StudentService = Depends(get_student_service),
 ) -> APIResponse[StudentResponse]:
     """
-    Soft-delete a student by setting `is_active = False`.
-    The record is kept in the database for audit and historical reporting.
+    Soft-delete học sinh bằng cách set `is_active = False`.
+    Dữ liệu vẫn được giữ lại trong DB để audit / báo cáo lịch sử.
     """
     student = await service.delete_student(student_code)
     return APIResponse.success(

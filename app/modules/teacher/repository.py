@@ -7,7 +7,8 @@ Responsibilities:
   - Uses async SQLAlchemy session for non-blocking I/O.
 """
 
-from typing import List, Optional, Tuple
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -26,6 +27,36 @@ class TeacherRepository:
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    # ------------------------------------------------------------------
+    # AUTO-GENERATE TEACHER CODE
+    # ------------------------------------------------------------------
+
+    async def generate_teacher_code(self, yymm: str) -> str:
+        """
+        Sinh mã giáo viên theo format Tchr + YYMM + xxx (3 chữ số, zero-padded).
+        VD: Tchr2603001 = GV thứ 1 trong tháng 03/2026.
+        """
+        try:
+            prefix = f"Tchr{yymm}"
+            result = await self._session.execute(
+                select(func.max(Teacher.teacher_code)).where(
+                    Teacher.teacher_code.like(f"{prefix}%")
+                )
+            )
+            max_code = result.scalar_one_or_none()
+            if max_code:
+                try:
+                    seq = int(max_code[-3:]) + 1
+                except ValueError:
+                    seq = 1
+            else:
+                seq = 1
+            return f"{prefix}{seq:03d}"
+        except SQLAlchemyError as exc:
+            raise DatabaseQueryException(
+                operation="generate_teacher_code", reason=str(exc)
+            ) from exc
 
     # ------------------------------------------------------------------
     # CREATE
@@ -109,6 +140,57 @@ class TeacherRepository:
         except SQLAlchemyError as exc:
             raise DatabaseQueryException(
                 operation="get_teacher_by_national_id", reason=str(exc)
+            ) from exc
+
+    # ------------------------------------------------------------------
+    # READ – teaching assignments for a teacher
+    # ------------------------------------------------------------------
+
+    async def get_teaching_assignments(self, teacher_id: int) -> List[Dict[str, Any]]:
+        """
+        Lấy danh sách phân công dạy của giáo viên, kèm thông tin lớp và môn học.
+        Dùng cho GET /teachers/{teacher_code} – bổ sung teaching_assignments.
+        """
+        try:
+            from app.modules.grading.entity import ClassSubject, Subject
+            from app.modules.classroom.entity import Classroom
+
+            result = await self._session.execute(
+                select(
+                    ClassSubject.id.label("cs_id"),
+                    ClassSubject.classroom_id,
+                    ClassSubject.subject_id,
+                    ClassSubject.semester,
+                    ClassSubject.academic_year,
+                    Classroom.class_name,
+                    Subject.subject_name,
+                )
+                .join(Classroom, Classroom.id == ClassSubject.classroom_id)
+                .join(Subject, Subject.id == ClassSubject.subject_id)
+                .where(
+                    ClassSubject.teacher_id == teacher_id,
+                    ClassSubject.is_active == True,
+                    Classroom.is_active == True,
+                    Subject.is_active == True,
+                )
+                .order_by(ClassSubject.academic_year.desc(), ClassSubject.semester.asc())
+            )
+            rows = result.fetchall()
+            return [
+                {
+                    "cs_id": r.cs_id,
+                    "classroom_id": r.classroom_id,
+                    "class_name": r.class_name,
+                    "subject_id": r.subject_id,
+                    "subject_name": r.subject_name,
+                    "semester": r.semester,
+                    "academic_year": r.academic_year,
+                }
+                for r in rows
+            ]
+        except SQLAlchemyError as exc:
+            raise DatabaseQueryException(
+                operation="get_teaching_assignments", reason=str(exc)
             ) from exc
 
     # ------------------------------------------------------------------

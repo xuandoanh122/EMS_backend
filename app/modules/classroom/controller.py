@@ -71,6 +71,9 @@ async def list_classrooms(
     academic_year: Optional[str] = Query(None),
     grade_level: Optional[int] = Query(None, ge=1, le=13),
     homeroom_teacher_id: Optional[int] = Query(None),
+    has_capacity: Optional[bool] = Query(
+        None, description="true = lớp chưa đầy, false = lớp đã đầy"
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     service: ClassroomService = Depends(get_service),
@@ -81,6 +84,7 @@ async def list_classrooms(
         academic_year=academic_year,
         grade_level=grade_level,
         homeroom_teacher_id=homeroom_teacher_id,
+        has_capacity=has_capacity,
         page=page,
         page_size=page_size,
     )
@@ -163,6 +167,7 @@ async def list_class_enrollments(
     class_code: str,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    status: Optional[str] = Query(None, description="Lọc theo status enrollment"),
     service: ClassroomService = Depends(get_service),
 ) -> APIResponse[EnrollmentListResponse]:
     result = await service.list_enrollments_by_class_code(class_code, page, page_size)

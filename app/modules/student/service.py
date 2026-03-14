@@ -4,26 +4,31 @@ Student Service – business logic layer.
 Responsibilities:
   - Orchestrate CRUD operations using StudentRepository.
   - Enforce business rules:
-      * Uniqueness of student_code, email, national_id.
+      * Auto-generate student_code = StudYYMMxxx.
+      * Uniqueness of email, national_id.
       * Valid status transitions (e.g. graduated → active is forbidden).
-      * Preservation-return curriculum change check.
+      * Integrated enrollment on create (class_ids) within 1 DB Transaction.
   - Raise domain-specific exceptions from app.core.exceptions.student.
   - Never access the database directly (always via repository).
 """
 
 import math
-from typing import Optional
+from datetime import datetime
+from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions.student import (
-    PreservationReturnException,
     StudentAlreadyExistsException,
     StudentNotFoundException,
     StudentStatusTransitionException,
 )
 from app.modules.student.dto import (
+    EnrollmentCreateResult,
+    EnrollmentSummary,
     StudentCreateRequest,
+    StudentCreateResponse,
+    StudentDetailResponse,
     StudentListResponse,
     StudentQueryParams,
     StudentResponse,
@@ -41,25 +46,24 @@ class StudentService:
     """
 
     def __init__(self, session: AsyncSession) -> None:
+        self._session = session
         self._repo = StudentRepository(session)
 
     # ------------------------------------------------------------------
-    # CREATE
+    # CREATE – với tích hợp enrollment (1 Transaction)
     # ------------------------------------------------------------------
 
-    async def create_student(self, data: StudentCreateRequest) -> StudentResponse:
+    async def create_student(self, data: StudentCreateRequest) -> StudentCreateResponse:
         """
-        Create a new student profile.
+        Create a new student profile, optionally enrolling into classrooms.
 
         Business rules:
-          - student_code must be globally unique (even among soft-deleted records).
+          - student_code is AUTO-GENERATED: StudYYMMxxx (not from FE).
           - email must be unique among active students (if provided).
           - national_id must be unique if provided.
+          - If class_ids provided: enroll in transaction; partial failure OK
+            (student is still created, failed enrollments reported).
         """
-        # Check for duplicate student_code (include soft-deleted to prevent recycling)
-        if await self._repo.exists_by_student_code(data.student_code):
-            raise StudentAlreadyExistsException(student_code=data.student_code)
-
         # Check for duplicate email among active students
         if data.email:
             existing_email = await self._repo.get_by_email(str(data.email))
@@ -76,8 +80,13 @@ class StudentService:
                     student_code=f"national_id:{data.national_id}"
                 )
 
+        # Auto-generate student_code
+        now = datetime.now()
+        yymm = now.strftime("%y%m")   # VD: "2603" cho tháng 03/2026
+        student_code = await self._repo.generate_student_code(yymm)
+
         student = Student(
-            student_code=data.student_code,
+            student_code=student_code,
             full_name=data.full_name,
             date_of_birth=data.date_of_birth,
             gender=data.gender,
@@ -87,30 +96,125 @@ class StudentService:
             address=data.address,
             enrollment_date=data.enrollment_date,
             academic_status=data.academic_status,
-            class_name=data.class_name,
-            program_name=data.program_name,
             parent_full_name=data.parent_full_name,
             parent_phone=data.parent_phone,
             parent_email=str(data.parent_email) if data.parent_email else None,
             medical_notes=data.medical_notes,
         )
 
+        # Flush để lấy student.id (chưa commit)
         created = await self._repo.create(student)
-        return StudentResponse.model_validate(created)
+
+        # ── Enroll vào các lớp (nếu có class_ids) ────────────────────
+        enrollment_results: List[EnrollmentCreateResult] = []
+
+        if data.class_ids:
+            from app.modules.classroom.entity import (
+                Classroom,
+                EnrollmentStatus,
+                EnrollmentType,
+                StudentClassEnrollment,
+            )
+            from sqlalchemy import select
+
+            for class_id in data.class_ids:
+                try:
+                    # Lấy classroom
+                    cls_result = await self._session.execute(
+                        select(Classroom).where(
+                            Classroom.id == class_id,
+                            Classroom.is_active == True,
+                        )
+                    )
+                    classroom = cls_result.scalars().first()
+
+                    if not classroom:
+                        enrollment_results.append(EnrollmentCreateResult(
+                            classroom_id=class_id,
+                            classroom_name=f"ID:{class_id}",
+                            status="failed",
+                            reason="ClassroomNotFound",
+                        ))
+                        continue
+
+                    # Kiểm tra capacity
+                    from sqlalchemy import func
+                    cnt_result = await self._session.execute(
+                        select(func.count(StudentClassEnrollment.id)).where(
+                            StudentClassEnrollment.classroom_id == class_id,
+                            StudentClassEnrollment.status == EnrollmentStatus.ACTIVE,
+                            StudentClassEnrollment.is_active == True,
+                        )
+                    )
+                    current_count = cnt_result.scalar_one() or 0
+
+                    if current_count >= classroom.max_capacity:
+                        enrollment_results.append(EnrollmentCreateResult(
+                            classroom_id=class_id,
+                            classroom_name=classroom.class_name,
+                            status="failed",
+                            reason="ClassroomCapacityExceeded",
+                        ))
+                        continue
+
+                    # Tạo enrollment
+                    enrollment = StudentClassEnrollment(
+                        student_id=created.id,
+                        classroom_id=class_id,
+                        enrollment_type=EnrollmentType.PRIMARY
+                        if not enrollment_results  # Lớp đầu tiên = primary
+                        else EnrollmentType.SUPPLEMENTARY,
+                        enrolled_date=data.enrollment_date,
+                    )
+                    self._session.add(enrollment)
+                    await self._session.flush()
+
+                    enrollment_results.append(EnrollmentCreateResult(
+                        classroom_id=class_id,
+                        classroom_name=classroom.class_name,
+                        status="success",
+                    ))
+
+                except Exception as e:
+                    enrollment_results.append(EnrollmentCreateResult(
+                        classroom_id=class_id,
+                        classroom_name=f"ID:{class_id}",
+                        status="failed",
+                        reason=str(e),
+                    ))
+
+        # Commit toàn bộ transaction (student + enrollments)
+        await self._repo.commit()
+
+        return StudentCreateResponse(
+            student_id=created.id,
+            student_code=created.student_code,
+            full_name=created.full_name,
+            enrollments=enrollment_results,
+        )
 
     # ------------------------------------------------------------------
-    # READ – single
+    # READ – single (with enrollments)
     # ------------------------------------------------------------------
 
-    async def get_student(self, student_code: str) -> StudentResponse:
+    async def get_student(self, student_code: str) -> StudentDetailResponse:
         """
         Retrieve a single active student by business code.
         Raises StudentNotFoundException if not found.
+        Includes current_enrollments in response.
         """
         student = await self._repo.get_by_student_code(student_code)
         if not student:
             raise StudentNotFoundException(student_id=student_code)
-        return StudentResponse.model_validate(student)
+
+        enrollments_data = await self._repo.get_enrollments_for_student(student.id)
+        enrollment_list = [EnrollmentSummary(**e) for e in enrollments_data]
+
+        base = StudentResponse.model_validate(student)
+        return StudentDetailResponse(
+            **base.model_dump(),
+            current_enrollments=enrollment_list,
+        )
 
     # ------------------------------------------------------------------
     # READ – list
@@ -144,6 +248,7 @@ class StudentService:
         Business rules:
           - student must exist and be active.
           - If email changes, new email must not be taken by another student.
+          - student_code and class changes are NOT allowed via this endpoint.
         """
         student = await self._repo.get_by_student_code(student_code)
         if not student:
@@ -172,8 +277,6 @@ class StudentService:
 
         Business rules:
           - Validates status transition against VALID_STATUS_TRANSITIONS matrix.
-          - Special case: if returning from PRESERVED → ACTIVE, triggers
-            the preservation-return check (curriculum change warning).
         """
         student = await self._repo.get_by_student_code(student_code)
         if not student:
@@ -194,13 +297,6 @@ class StudentService:
                 target_status=new_status.value,
             )
 
-        # Edge case: returning from preservation
-        if (
-            current_status == StudentStatus.PRESERVED
-            and new_status == StudentStatus.ACTIVE
-        ):
-            self._check_preservation_return(student)
-
         updated = await self._repo.update_status(student, new_status)
         return StudentResponse.model_validate(updated)
 
@@ -220,27 +316,3 @@ class StudentService:
 
         deleted = await self._repo.soft_delete(student)
         return StudentResponse.model_validate(deleted)
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
-    def _check_preservation_return(self, student: Student) -> None:
-        """
-        Edge case: student returning from preservation.
-        Raise PreservationReturnException if the student's stored program_name
-        is missing – which may indicate the curriculum has been updated and
-        the program reference is no longer valid.
-
-        In a full implementation this would compare the student's original
-        curriculum version against the current active curriculum.
-        """
-        if not student.program_name:
-            raise PreservationReturnException(
-                student_id=student.student_code,
-                reason=(
-                    "No program/curriculum is associated with this student. "
-                    "The original curriculum may have been removed or updated. "
-                    "Please review and assign a valid program before reactivating."
-                ),
-            )

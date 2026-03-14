@@ -134,6 +134,15 @@ class ClassroomRepository:
                 q_paged = q_paged.where(Classroom.grade_level == params.grade_level)
             if params.homeroom_teacher_id:
                 q_paged = q_paged.where(Classroom.homeroom_teacher_id == params.homeroom_teacher_id)
+            # Filter has_capacity: lớp chưa đầy (enrollment < max_capacity)
+            if params.has_capacity is True:
+                q_paged = q_paged.where(
+                    func.coalesce(enroll_count_sq.c.cnt, 0) < Classroom.max_capacity
+                )
+            elif params.has_capacity is False:
+                q_paged = q_paged.where(
+                    func.coalesce(enroll_count_sq.c.cnt, 0) >= Classroom.max_capacity
+                )
 
             rows = await self._s.execute(
                 q_paged.order_by(Classroom.academic_year.desc(), Classroom.class_code.asc())

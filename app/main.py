@@ -97,11 +97,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
     app.include_router(lookups_router, prefix="/api/v1/lookups", tags=["Lookups"])
     app.include_router(teacher_portal_admin_router, prefix="/api/v1/admin", tags=["Admin"])
-    app.include_router(teacher_portal_router, prefix="/api/v1/teacher", tags=["Teacher Portal"])
 
-    # Uncomment as you build each module:
-    # from app.modules.facility.controller import router as facility_router
-    # app.include_router(facility_router, prefix="/api/v1/facilities", tags=["Facilities"])
 
     # â”€â”€ Health check endpoint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     @app.get("/health", tags=["System"])

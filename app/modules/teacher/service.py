@@ -4,13 +4,15 @@ Teacher Service – business logic layer.
 Responsibilities:
   - Orchestrate CRUD operations using TeacherRepository.
   - Enforce business rules:
-      * Uniqueness of teacher_code, email, national_id.
+      * Auto-generate teacher_code = TchrYYMMxxx.
+      * Uniqueness of email, national_id.
       * Valid employment status transitions.
   - Raise domain-specific exceptions from app.core.exceptions.teacher.
   - Never access the database directly (always via repository).
 """
 
 import math
+from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,10 +23,12 @@ from app.core.exceptions.teacher import (
 )
 from app.modules.teacher.dto import (
     TeacherCreateRequest,
+    TeacherDetailResponse,
     TeacherListResponse,
     TeacherQueryParams,
     TeacherResponse,
     TeacherStatusUpdateRequest,
+    TeachingAssignmentSummary,
     TeacherUpdateRequest,
 )
 from app.modules.teacher.entity import Teacher, VALID_TEACHER_STATUS_TRANSITIONS
@@ -49,13 +53,10 @@ class TeacherService:
         Create a new teacher profile.
 
         Business rules:
-          - teacher_code must be globally unique (even among soft-deleted records).
+          - teacher_code is AUTO-GENERATED: TchrYYMMxxx (not from FE).
           - email must be unique among active teachers (if provided).
           - national_id must be unique if provided.
         """
-        if await self._repo.exists_by_teacher_code(data.teacher_code):
-            raise TeacherAlreadyExistsException(identifier=data.teacher_code)
-
         if data.email:
             existing_email = await self._repo.get_by_email(str(data.email))
             if existing_email:
@@ -70,8 +71,13 @@ class TeacherService:
                     identifier=f"national_id:{data.national_id}"
                 )
 
+        # Auto-generate teacher_code
+        now = datetime.now()
+        yymm = now.strftime("%y%m")   # VD: "2603" cho tháng 03/2026
+        teacher_code = await self._repo.generate_teacher_code(yymm)
+
         teacher = Teacher(
-            teacher_code=data.teacher_code,
+            teacher_code=teacher_code,
             full_name=data.full_name,
             date_of_birth=data.date_of_birth,
             gender=data.gender,
@@ -90,18 +96,27 @@ class TeacherService:
         return TeacherResponse.model_validate(created)
 
     # ------------------------------------------------------------------
-    # READ – single
+    # READ – single (with teaching assignments)
     # ------------------------------------------------------------------
 
-    async def get_teacher(self, teacher_code: str) -> TeacherResponse:
+    async def get_teacher(self, teacher_code: str) -> TeacherDetailResponse:
         """
         Retrieve a single active teacher by business code.
         Raises TeacherNotFoundException if not found.
+        Includes teaching_assignments in response.
         """
         teacher = await self._repo.get_by_teacher_code(teacher_code)
         if not teacher:
             raise TeacherNotFoundException(teacher_id=teacher_code)
-        return TeacherResponse.model_validate(teacher)
+
+        assignments_data = await self._repo.get_teaching_assignments(teacher.id)
+        assignment_list = [TeachingAssignmentSummary(**a) for a in assignments_data]
+
+        base = TeacherResponse.model_validate(teacher)
+        return TeacherDetailResponse(
+            **base.model_dump(),
+            teaching_assignments=assignment_list,
+        )
 
     # ------------------------------------------------------------------
     # READ – list

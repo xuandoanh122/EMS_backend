@@ -251,6 +251,10 @@ class GradingService:
     async def bulk_enter_grades(
         self, data: StudentGradeBulkCreateRequest
     ) -> List[StudentGradeResponse]:
+        """
+        UPSERT grades hàng loạt: INSERT nếu chưa có, UPDATE nếu đã có.
+        Ghi audit log khi UPDATE. Bọc trong 1 Transaction.
+        """
         cs = await self._repo.get_class_subject_by_id(data.class_subject_id)
         if not cs:
             raise ClassSubjectNotFoundException(identifier=str(data.class_subject_id))
@@ -272,14 +276,28 @@ class GradingService:
                 exam_date=data.exam_date,
                 entered_by=data.entered_by,
             ))
-        created_list = await self._repo.bulk_create_student_grades(objs)
+        upserted_list = await self._repo.bulk_upsert_student_grades(
+            objs,
+            entered_by=data.entered_by,
+            reason="Bulk grade upsert",
+        )
 
         # Recalculate averages for all affected students
         student_ids = {g["student_id"] for g in data.grades}
         for sid in student_ids:
             await self._recalculate_average(sid, data.class_subject_id, cs)
 
-        return [StudentGradeResponse.model_validate(g) for g in created_list]
+        return [StudentGradeResponse.model_validate(g) for g in upserted_list]
+
+    async def get_grade_matrix(self, cs_id: int) -> dict:
+        """
+        Trả về ma trận điểm dạng Grid cho 1 class-subject.
+        Hàng = học sinh, cột = thành phần điểm.
+        """
+        cs = await self._repo.get_class_subject_by_id(cs_id)
+        if not cs:
+            raise ClassSubjectNotFoundException(identifier=str(cs_id))
+        return await self._repo.get_grade_matrix(cs_id)
 
     async def get_grade(self, grade_id: int) -> StudentGradeResponse:
         obj = await self._repo.get_student_grade_by_id(grade_id)

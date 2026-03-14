@@ -281,19 +281,220 @@ class GradingRepository:
             await self._s.rollback()
             raise DatabaseQueryException(operation="create_student_grade", reason=str(exc)) from exc
 
-    async def bulk_create_student_grades(self, objs: List[StudentGrade]) -> List[StudentGrade]:
+    async def bulk_upsert_student_grades(
+        self, objs: List[StudentGrade], entered_by: Optional[int] = None, reason: str = "Bulk upsert"
+    ) -> List[StudentGrade]:
+        """
+        UPSERT: nếu đã có grade (student_id, class_subject_id, grade_component_id)
+        thì UPDATE score + ghi audit log; nếu chưa có thì INSERT mới.
+        Bọc toàn bộ trong 1 transaction.
+        """
         try:
-            self._s.add_all(objs)
-            await self._s.commit()
+            result_list: List[StudentGrade] = []
             for obj in objs:
-                await self._s.refresh(obj)
-            return objs
+                existing_result = await self._s.execute(
+                    select(StudentGrade).where(
+                        StudentGrade.student_id == obj.student_id,
+                        StudentGrade.class_subject_id == obj.class_subject_id,
+                        StudentGrade.grade_component_id == obj.grade_component_id,
+                        StudentGrade.is_active == True,
+                    )
+                )
+                existing = existing_result.scalars().first()
+
+                if existing:
+                    # UPDATE + audit log
+                    old_score = existing.score
+                    if old_score != obj.score:
+                        audit = GradeAuditLog(
+                            student_grade_id=existing.id,
+                            old_score=old_score,
+                            new_score=obj.score,
+                            changed_by=entered_by,
+                            reason=reason,
+                        )
+                        self._s.add(audit)
+                        existing.score = obj.score
+                        existing.last_modified_by = entered_by
+                        existing.last_modified_at = datetime.utcnow()
+                        if obj.exam_date:
+                            existing.exam_date = obj.exam_date
+                    result_list.append(existing)
+                else:
+                    # INSERT mới
+                    self._s.add(obj)
+                    await self._s.flush()
+                    result_list.append(obj)
+
+            await self._s.commit()
+            for g in result_list:
+                await self._s.refresh(g)
+            return result_list
         except IntegrityError as exc:
             await self._s.rollback()
             raise DatabaseIntegrityException(constraint=str(exc.orig)) from exc
         except SQLAlchemyError as exc:
             await self._s.rollback()
-            raise DatabaseQueryException(operation="bulk_create_student_grades", reason=str(exc)) from exc
+            raise DatabaseQueryException(
+                operation="bulk_upsert_student_grades", reason=str(exc)
+            ) from exc
+
+    async def get_grade_matrix(
+        self, class_subject_id: int
+    ) -> Dict[str, Any]:
+        """
+        Trả về ma trận điểm: danh sách học sinh × thành phần điểm × điểm hiện tại.
+        Dùng cho endpoint GET /grading/class-subjects/{cs_id}/grade-matrix.
+        """
+        from decimal import Decimal
+        from app.modules.classroom.entity import (
+            Classroom,
+            EnrollmentStatus,
+            StudentClassEnrollment,
+        )
+        from app.modules.student.entity import Student
+
+        try:
+            # Lấy ClassSubject kèm thông tin lớp + môn
+            cs_result = await self._s.execute(
+                select(
+                    ClassSubject.id,
+                    ClassSubject.classroom_id,
+                    ClassSubject.subject_id,
+                    ClassSubject.semester,
+                    ClassSubject.academic_year,
+                    Classroom.class_name,
+                    Subject.subject_name,
+                )
+                .join(Classroom, Classroom.id == ClassSubject.classroom_id)
+                .join(Subject, Subject.id == ClassSubject.subject_id)
+                .where(ClassSubject.id == class_subject_id)
+            )
+            cs_row = cs_result.first()
+            if not cs_row:
+                return {}
+
+            # Lấy grade components
+            components = await self.list_grade_components_by_class_subject(class_subject_id)
+
+            # Lấy học sinh đang enrolled trong lớp đó
+            students_result = await self._s.execute(
+                select(
+                    Student.id,
+                    Student.student_code,
+                    Student.full_name,
+                )
+                .join(
+                    StudentClassEnrollment,
+                    StudentClassEnrollment.student_id == Student.id,
+                )
+                .where(
+                    StudentClassEnrollment.classroom_id == cs_row.classroom_id,
+                    StudentClassEnrollment.status == EnrollmentStatus.ACTIVE,
+                    StudentClassEnrollment.is_active == True,
+                    Student.is_active == True,
+                )
+                .order_by(Student.full_name.asc())
+            )
+            student_rows = students_result.fetchall()
+
+            if not student_rows:
+                return {
+                    "class_subject_id": class_subject_id,
+                    "classroom_name": cs_row.class_name,
+                    "subject_name": cs_row.subject_name,
+                    "semester": cs_row.semester,
+                    "academic_year": cs_row.academic_year,
+                    "components": [
+                        {
+                            "id": c.id,
+                            "name": c.component_name,
+                            "weight_percent": c.weight_percent,
+                        }
+                        for c in components
+                    ],
+                    "students": [],
+                }
+
+            # Lấy tất cả điểm cho class_subject này
+            student_ids = [r.id for r in student_rows]
+            grades_result = await self._s.execute(
+                select(StudentGrade).where(
+                    StudentGrade.class_subject_id == class_subject_id,
+                    StudentGrade.student_id.in_(student_ids),
+                    StudentGrade.is_active == True,
+                )
+            )
+            all_grades = grades_result.scalars().all()
+
+            # Map: (student_id, grade_component_id) → StudentGrade
+            grade_map: Dict = {}
+            for g in all_grades:
+                grade_map[(g.student_id, g.grade_component_id)] = g
+
+            # Tính weighted_average cho mỗi HS
+            weight_map = {c.id: c.weight_percent for c in components}
+            total_weight = sum(weight_map.values())
+
+            students_data = []
+            for sr in student_rows:
+                grades_dict: Dict[str, Any] = {}
+                all_filled = True
+
+                for c in components:
+                    key = (sr.id, c.id)
+                    if key in grade_map:
+                        g = grade_map[key]
+                        grades_dict[str(c.id)] = {
+                            "grade_id": g.id,
+                            "score": float(g.score),
+                        }
+                    else:
+                        grades_dict[str(c.id)] = {"grade_id": None, "score": None}
+                        all_filled = False
+
+                # Tính weighted average nếu đủ điểm
+                weighted_avg = None
+                if all_filled and total_weight > 0:
+                    weighted_sum = Decimal("0")
+                    for c in components:
+                        key = (sr.id, c.id)
+                        if key in grade_map:
+                            w = weight_map[c.id]
+                            weighted_sum += grade_map[key].score * Decimal(w)
+                    weighted_avg = float(
+                        (weighted_sum / Decimal(total_weight)).quantize(Decimal("0.01"))
+                    )
+
+                students_data.append({
+                    "student_id": sr.id,
+                    "student_code": sr.student_code,
+                    "full_name": sr.full_name,
+                    "grades": grades_dict,
+                    "weighted_average": weighted_avg,
+                })
+
+            return {
+                "class_subject_id": class_subject_id,
+                "classroom_name": cs_row.class_name,
+                "subject_name": cs_row.subject_name,
+                "semester": cs_row.semester,
+                "academic_year": cs_row.academic_year,
+                "components": [
+                    {
+                        "id": c.id,
+                        "name": c.component_name,
+                        "weight_percent": c.weight_percent,
+                    }
+                    for c in components
+                ],
+                "students": students_data,
+            }
+
+        except SQLAlchemyError as exc:
+            raise DatabaseQueryException(
+                operation="get_grade_matrix", reason=str(exc)
+            ) from exc
 
     async def get_student_grade_by_id(self, grade_id: int) -> Optional[StudentGrade]:
         try:
