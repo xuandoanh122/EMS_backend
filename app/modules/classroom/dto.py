@@ -9,7 +9,7 @@ Covers:
 from datetime import date, datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.modules.classroom.entity import (
     ClassType,
@@ -71,6 +71,29 @@ class ClassroomUpdateRequest(_ClassroomBase):
                 "room_number": "P.305",
                 "max_capacity": 35,
                 "homeroom_teacher_id": 3,
+            }
+        }
+
+
+class ClassroomStatusUpdateRequest(BaseModel):
+    is_active: Optional[bool] = Field(None, description="True = active, False = inactive")
+    new_status: Optional[str] = Field(None, description="Alias for is_active: active | inactive")
+
+    @model_validator(mode="after")
+    def normalize_status(self):
+        if self.is_active is None:
+            if not self.new_status:
+                raise ValueError("is_active or new_status is required")
+            status = self.new_status.strip().lower()
+            if status not in {"active", "inactive"}:
+                raise ValueError("new_status must be 'active' or 'inactive'")
+            self.is_active = status == "active"
+        return self
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "is_active": False
             }
         }
 

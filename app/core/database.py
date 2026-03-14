@@ -1,14 +1,14 @@
-"""
+﻿"""
 Database configuration for EMS.
 
 Strategy: PRIMARY (MSSQL) + BACKUP (SQLite fallback).
-  - Khi khởi động, hệ thống thử kết nối PRIMARY trước.
-  - Nếu PRIMARY không kết nối được → tự động chuyển sang BACKUP (SQLite local).
-  - BACKUP chạy sync (không async) nhưng đủ để hệ thống không sập khi mất DB.
+  - Khi khá»Ÿi Ä‘á»™ng, há»‡ thá»‘ng thá»­ káº¿t ná»‘i PRIMARY trÆ°á»›c.
+  - Náº¿u PRIMARY khÃ´ng káº¿t ná»‘i Ä‘Æ°á»£c â†’ tá»± Ä‘á»™ng chuyá»ƒn sang BACKUP (SQLite local).
+  - BACKUP cháº¡y sync (khÃ´ng async) nhÆ°ng Ä‘á»§ Ä‘á»ƒ há»‡ thá»‘ng khÃ´ng sáº­p khi máº¥t DB.
 
-Cấu hình:
-  - Điền MSSQL_* vào file .env khi deploy thực tế.
-  - Username / Password để trống → bạn tự điền sau.
+Cáº¥u hÃ¬nh:
+  - Äiá»n MSSQL_* vÃ o file .env khi deploy thá»±c táº¿.
+  - Username / Password Ä‘á»ƒ trá»‘ng â†’ báº¡n tá»± Ä‘iá»n sau.
 
 Usage:
     from app.core.database import get_async_session, engine
@@ -30,13 +30,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool, StaticPool
 
-# Đảm bảo .env luôn được load dù module bị import trước main.py
+# Äáº£m báº£o .env luÃ´n Ä‘Æ°á»£c load dÃ¹ module bá»‹ import trÆ°á»›c main.py
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
 
 logger = logging.getLogger("ems.database")
 
 # ---------------------------------------------------------------------------
-# Config – đọc lazy qua property để đảm bảo .env đã được load
+# Config â€“ Ä‘á»c lazy qua property Ä‘á»ƒ Ä‘áº£m báº£o .env Ä‘Ã£ Ä‘Æ°á»£c load
 # ---------------------------------------------------------------------------
 
 def _cfg(key: str, default: str = "") -> str:
@@ -81,7 +81,7 @@ def _build_sqlite_url() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Engine & Session factory – resolved at startup
+# Engine & Session factory â€“ resolved at startup
 # ---------------------------------------------------------------------------
 
 _async_engine = None
@@ -114,12 +114,12 @@ async def init_db() -> None:
     Called once at application startup (lifespan).
 
     1. Try to connect to PRIMARY (MSSQL).
-    2. On failure → fall back to BACKUP (SQLite).
+    2. On failure â†’ fall back to BACKUP (SQLite).
     3. Run create_all to ensure tables exist (safe for existing tables).
     """
     global _async_engine, _AsyncSessionLocal, _is_using_backup
 
-    # ── Try PRIMARY ──────────────────────────────────────────────────────
+    # â”€â”€ Try PRIMARY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     try:
         engine = _create_mssql_engine()
         async with engine.connect() as conn:
@@ -127,24 +127,24 @@ async def init_db() -> None:
 
         _async_engine = engine
         _is_using_backup = False
-        logger.info("✅ Connected to PRIMARY database (MSSQL @ %s:%s/%s)",
+        logger.info("âœ… Connected to PRIMARY database (MSSQL @ %s:%s/%s)",
                     _cfg("MSSQL_HOST", "localhost"),
                     _cfg("MSSQL_PORT", "1433"),
                     _cfg("MSSQL_DATABASE", "ems_db"))
 
     except Exception as primary_exc:
         logger.warning(
-            "⚠️  PRIMARY database unavailable (%s). "
+            "âš ï¸  PRIMARY database unavailable (%s). "
             "Falling back to BACKUP (SQLite: %s).",
             primary_exc,
             SQLITE_BACKUP_PATH.resolve(),
         )
         _async_engine = _create_sqlite_engine()
         _is_using_backup = True
-        logger.info("✅ Connected to BACKUP database (SQLite @ %s)",
+        logger.info("âœ… Connected to BACKUP database (SQLite @ %s)",
                     SQLITE_BACKUP_PATH.resolve())
 
-    # ── Session factory ──────────────────────────────────────────────────
+    # â”€â”€ Session factory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     _AsyncSessionLocal = async_sessionmaker(
         bind=_async_engine,
         class_=AsyncSession,
@@ -153,7 +153,7 @@ async def init_db() -> None:
         autoflush=False,
     )
 
-    # ── Create tables ────────────────────────────────────────────────────
+    # â”€â”€ Create tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     await _create_tables()
 
 
@@ -161,22 +161,24 @@ async def _create_tables() -> None:
     """Create all tables that are registered on the metadata."""
     # Import here to avoid circular imports; all entities share the same Base
     from app.modules.student.entity import Base as StudentBase
-    import app.modules.teacher.entity    # noqa: F401 – registers Teacher
-    import app.modules.classroom.entity  # noqa: F401 – registers Classroom, StudentClassEnrollment
-    import app.modules.salary.entity     # noqa: F401 – registers SalaryGrade, BonusPolicy, MonthlyPayroll, PayrollBonusDetail
-    import app.modules.grading.entity    # noqa: F401 – registers Subject, ClassSubject, GradeComponent, StudentGrade, GradeAuditLog, SemesterAverage
+    import app.modules.auth.entity       # noqa: F401 - registers User
+    import app.modules.teacher.entity    # noqa: F401 â€“ registers Teacher
+    import app.modules.classroom.entity  # noqa: F401 â€“ registers Classroom, StudentClassEnrollment
+    import app.modules.salary.entity     # noqa: F401 â€“ registers SalaryGrade, BonusPolicy, MonthlyPayroll, PayrollBonusDetail
+    import app.modules.grading.entity    # noqa: F401 â€“ registers Subject, ClassSubject, GradeComponent, StudentGrade, GradeAuditLog, SemesterAverage
+    import app.modules.teacher_portal.entity  # noqa: F401 - registers AttendanceRecord, TimetableEntry
 
     async with _async_engine.begin() as conn:
         await conn.run_sync(StudentBase.metadata.create_all)
 
-    logger.info("📋 Database tables verified / created.")
+    logger.info("ðŸ“‹ Database tables verified / created.")
 
 
 async def close_db() -> None:
     """Dispose the engine pool gracefully on shutdown."""
     if _async_engine:
         await _async_engine.dispose()
-        logger.info("🔌 Database engine disposed.")
+        logger.info("ðŸ”Œ Database engine disposed.")
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +192,7 @@ def is_using_backup() -> bool:
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     """
-    FastAPI dependency – yields an AsyncSession.
+    FastAPI dependency â€“ yields an AsyncSession.
 
     Usage in controller:
         async def endpoint(session: AsyncSession = Depends(get_async_session)):
@@ -209,3 +211,4 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
+

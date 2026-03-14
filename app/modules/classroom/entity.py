@@ -42,8 +42,9 @@ from app.modules.student.entity import Base
 # ---------------------------------------------------------------------------
 
 class ClassType(str, enum.Enum):
-    STANDARD  = "standard"   # Lớp cơ bản – chương trình Bộ GD&DT
-    CAMBRIDGE = "cambridge"  # Lớp nâng cao – Cambridge International
+    STANDARD    = "standard"    # Lớp thường
+    SPECIALIZED = "specialized" # Lớp chuyên
+    ADVANCED    = "advanced"    # Lớp nâng cao
 
 
 class EnrollmentType(str, enum.Enum):

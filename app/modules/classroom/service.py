@@ -21,6 +21,7 @@ from app.modules.classroom.dto import (
     ClassroomListResponse,
     ClassroomQueryParams,
     ClassroomResponse,
+    ClassroomStatusUpdateRequest,
     ClassroomUpdateRequest,
     EnrollmentCreateRequest,
     EnrollmentListResponse,
@@ -136,6 +137,15 @@ class ClassroomService:
         if not obj:
             raise ClassroomNotFoundException(identifier=class_code)
         updated = await self._repo.update_classroom(obj, data)
+        return await self._to_response(updated)
+
+    async def update_classroom_status(
+        self, class_code: str, data: ClassroomStatusUpdateRequest
+    ) -> ClassroomResponse:
+        obj = await self._repo.get_classroom_by_code_any(class_code)
+        if not obj:
+            raise ClassroomNotFoundException(identifier=class_code)
+        updated = await self._repo.update_classroom_status(obj, data.is_active)
         return await self._to_response(updated)
 
     async def delete_classroom(self, class_code: str) -> ClassroomResponse:

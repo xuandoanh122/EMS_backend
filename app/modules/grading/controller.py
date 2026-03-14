@@ -38,6 +38,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_session
+from app.core.dependencies import require_any_role
 from app.core.response import APIResponse
 from app.modules.grading.dto import (
     ClassSubjectCreateRequest,
@@ -63,7 +64,7 @@ from app.modules.grading.dto import (
 )
 from app.modules.grading.service import GradingService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_any_role("admin", "teacher"))])
 
 
 def get_service(session: AsyncSession = Depends(get_async_session)) -> GradingService:

@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_session
+from app.core.dependencies import require_role
 from app.core.response import APIResponse
 from app.modules.student.dto import (
     StudentCreateRequest,
@@ -34,7 +35,7 @@ from app.modules.student.dto import (
 from app.modules.student.entity import StudentStatus
 from app.modules.student.service import StudentService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_role("admin"))])
 
 
 # ---------------------------------------------------------------------------
