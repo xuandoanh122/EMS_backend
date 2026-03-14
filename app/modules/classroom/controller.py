@@ -22,12 +22,14 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_session
+from app.core.dependencies import require_role
 from app.core.response import APIResponse
 from app.modules.classroom.dto import (
     ClassroomCreateRequest,
     ClassroomListResponse,
     ClassroomQueryParams,
     ClassroomResponse,
+    ClassroomStatusUpdateRequest,
     ClassroomUpdateRequest,
     EnrollmentCreateRequest,
     EnrollmentListResponse,
@@ -38,7 +40,7 @@ from app.modules.classroom.dto import (
 from app.modules.classroom.entity import ClassType
 from app.modules.classroom.service import ClassroomService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_role("admin"))])
 
 
 def get_service(session: AsyncSession = Depends(get_async_session)) -> ClassroomService:
@@ -194,6 +196,20 @@ async def update_classroom(
     return APIResponse.success(
         data=result.model_dump(),
         detail=f"Classroom '{class_code}' updated",
+    )
+
+
+@router.patch("/{class_code}/status", status_code=200, summary="Cáº­p nháº­t tráº¡ng thÃ¡i lá»›p")
+async def update_classroom_status(
+    class_code: str,
+    data: ClassroomStatusUpdateRequest,
+    service: ClassroomService = Depends(get_service),
+) -> APIResponse[ClassroomResponse]:
+    result = await service.update_classroom_status(class_code, data)
+    status_label = "active" if data.is_active else "inactive"
+    return APIResponse.success(
+        data=result.model_dump(),
+        detail=f"Classroom '{class_code}' status â†’ {status_label}",
     )
 
 

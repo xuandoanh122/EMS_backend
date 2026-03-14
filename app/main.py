@@ -1,4 +1,4 @@
-"""
+﻿"""
 EMS (Education Management System) - FastAPI Application Entry Point.
 
 This is the main application file that creates and configures the FastAPI
@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Load .env từ thư mục gốc project (d:\EMS_backend\.env)
+# Load .env tá»« thÆ° má»¥c gá»‘c project (d:\EMS_backend\.env)
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
 from app.core.database import close_db, init_db
@@ -29,17 +29,17 @@ logger = logging.getLogger("ems")
 
 
 # ---------------------------------------------------------------------------
-# Lifespan – startup / shutdown hooks
+# Lifespan â€“ startup / shutdown hooks
 # ---------------------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ── Startup ──────────────────────────────────────────────────────────
-    logger.info("EMS starting up…")
+    # â”€â”€ Startup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    logger.info("EMS starting upâ€¦")
     await init_db()    # connects to MSSQL (or SQLite fallback) + creates tables
     yield
-    # ── Shutdown ─────────────────────────────────────────────────────────
-    logger.info("EMS shutting down…")
+    # â”€â”€ Shutdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    logger.info("EMS shutting downâ€¦")
     await close_db()   # disposes connection pool
 
 
@@ -55,8 +55,8 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="EMS - Education Management System",
         description=(
-            "Hệ thống Quản lý Giáo dục - API Backend. "
-            "Quản lý Học sinh, Giáo viên, Cơ sở vật chất."
+            "Há»‡ thá»‘ng Quáº£n lÃ½ GiÃ¡o dá»¥c - API Backend. "
+            "Quáº£n lÃ½ Há»c sinh, GiÃ¡o viÃªn, CÆ¡ sá»Ÿ váº­t cháº¥t."
         ),
         version="1.0.0",
         docs_url="/docs",     # Swagger UI
@@ -64,7 +64,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # ── CORS middleware ──────────────────────────────────────────────────
+    # â”€â”€ CORS middleware â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -73,17 +73,20 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # ── Register global exception handlers ──────────────────────────────
+    # â”€â”€ Register global exception handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     register_exception_handlers(app)
 
-    # ── Include module routers ───────────────────────────────────────────
+    # â”€â”€ Include module routers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     from app.modules.student.controller import router as student_router
     from app.modules.teacher.controller import router as teacher_router
     from app.modules.classroom.controller import router as classroom_router
     from app.modules.grading.controller import router as grading_router
     from app.modules.salary.controller import router as salary_router
     from app.modules.dashboard.controller import router as dashboard_router
-    from app.modules.lookup.controller import router as lookup_router
+    from app.modules.auth.controller import router as auth_router
+    from app.modules.lookups.controller import router as lookups_router
+    from app.modules.teacher_portal.controller import admin_router as teacher_portal_admin_router
+    from app.modules.teacher_portal.controller import router as teacher_portal_router
 
     app.include_router(student_router,   prefix="/api/v1/students",   tags=["Students"])
     app.include_router(teacher_router,   prefix="/api/v1/teachers",   tags=["Teachers"])
@@ -91,15 +94,12 @@ def create_app() -> FastAPI:
     app.include_router(grading_router,   prefix="/api/v1/grading",    tags=["Grading"])
     app.include_router(salary_router,    prefix="/api/v1/salary",     tags=["Salary"])
     app.include_router(dashboard_router, prefix="/api/v1/dashboard",  tags=["Dashboard"])
-    app.include_router(lookup_router,    prefix="/api/v1/lookups",    tags=["Lookups"])
+    app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
+    app.include_router(lookups_router, prefix="/api/v1/lookups", tags=["Lookups"])
+    app.include_router(teacher_portal_admin_router, prefix="/api/v1/admin", tags=["Admin"])
 
-    # Uncomment as you build each module:
-    # from app.modules.auth.controller import router as auth_router
-    # from app.modules.facility.controller import router as facility_router
-    # app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
-    # app.include_router(facility_router, prefix="/api/v1/facilities", tags=["Facilities"])
 
-    # ── Health check endpoint ────────────────────────────────────────────
+    # â”€â”€ Health check endpoint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     @app.get("/health", tags=["System"])
     async def health_check():
         from app.core.database import is_using_backup

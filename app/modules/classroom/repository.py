@@ -61,6 +61,18 @@ class ClassroomRepository:
         except SQLAlchemyError as exc:
             raise DatabaseQueryException(operation="get_classroom_by_code", reason=str(exc)) from exc
 
+    async def get_classroom_by_code_any(self, class_code: str) -> Optional[Classroom]:
+        """Get classroom by code regardless of active flag (used for status toggle)."""
+        try:
+            result = await self._s.execute(
+                select(Classroom).where(Classroom.class_code == class_code)
+            )
+            return result.scalars().first()
+        except SQLAlchemyError as exc:
+            raise DatabaseQueryException(
+                operation="get_classroom_by_code_any", reason=str(exc)
+            ) from exc
+
     async def list_classrooms(
         self, params: ClassroomQueryParams
     ) -> Tuple[List[Tuple[Classroom, int]], int]:
@@ -165,6 +177,19 @@ class ClassroomRepository:
         except SQLAlchemyError as exc:
             await self._s.rollback()
             raise DatabaseQueryException(operation="soft_delete_classroom", reason=str(exc)) from exc
+
+    async def update_classroom_status(self, obj: Classroom, is_active: bool) -> Classroom:
+        """Toggle classroom active flag."""
+        try:
+            obj.is_active = is_active
+            await self._s.commit()
+            await self._s.refresh(obj)
+            return obj
+        except SQLAlchemyError as exc:
+            await self._s.rollback()
+            raise DatabaseQueryException(
+                operation="update_classroom_status", reason=str(exc)
+            ) from exc
 
     async def exists_by_code(self, class_code: str) -> bool:
         try:

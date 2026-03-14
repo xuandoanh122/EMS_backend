@@ -10,10 +10,11 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_async_session
+from app.core.dependencies import require_role
 from app.core.response import APIResponse
 from app.modules.dashboard.service import DashboardService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_role("admin"))])
 
 
 def get_service(session: AsyncSession = Depends(get_async_session)) -> DashboardService:
