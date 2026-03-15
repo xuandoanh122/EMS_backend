@@ -35,6 +35,7 @@ class User(Base):
     )
 
     is_active = Column(Boolean, nullable=False, default=True)
+    must_change_password = Column(Boolean, nullable=False, default=True)
     last_login_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
@@ -47,4 +48,16 @@ class TokenBlacklist(Base):
     jti = Column(String(64), unique=True, nullable=False, index=True)
     token_type = Column(String(20), nullable=False, index=True)
     expires_at = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class PasswordResetToken(Base):
+    """Token để reset mật khẩu."""
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    used_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())

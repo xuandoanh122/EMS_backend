@@ -1447,6 +1447,54 @@ Tạo user.
 
 ---
 
+### POST `/auth/teachers/{teacher_id}/account` (admin)
+Tạo tài khoản cho Giáo viên.
+
+**Path params:** `teacher_id` - ID của giáo viên
+
+**Body:**
+```json
+{
+  "send_email": true
+}
+```
+
+**Response:**
+```json
+{
+  "code": 201,
+  "message": "Success",
+  "detail": "Tài khoản Giáo viên đã được tạo",
+  "data": {
+    "user_id": 2,
+    "teacher_id": 45,
+    "teacher_code": "Tchr2603001",
+    "teacher_name": "Nguyễn Văn A",
+    "email": "nguyenvana@school.edu.vn",
+    "username": "nguyenvana",
+    "temp_password": "aB3xK9mNp",
+    "email_sent": true,
+    "must_change_password": true
+  }
+}
+```
+
+> **Quy trình:**
+> 1. Admin gọi API với teacher_id
+> 2. Hệ thống tự tạo username từ email
+> 3. Hệ thống tạo mật khẩu ngẫu nhiên (10 ký tự)
+> 4. Gửi email chứa mật khẩu cho Giáo viên
+> 5. Giáo viên đăng nhập lần đầu và **bắt buộc đổi mật khẩu**
+
+> **Lưu ý:**
+> - Giáo viên phải có email trong hồ sơ
+> - Nếu teacher đã có tài khoản, trả lỗi 409 Conflict
+> - Email chỉ được gửi nếu cấu hình SMTP (xem biến môi trường EMAIL_*)
+
+---
+
+### GET `/auth/users` (admin)
+
 ### GET `/auth/users` (admin)
 Danh sách user.
 
@@ -1456,6 +1504,151 @@ Danh sách user.
 
 ### GET `/auth/users/{user_id}` (admin)
 Chi tiết user.
+
+---
+
+### POST `/auth/forgot-password` (public)
+Quên mật khẩu - gửi email reset.
+
+**Body:**
+```json
+{
+  "email": "nguyenvana@school.edu.vn"
+}
+```
+
+**Response:**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "Nếu email tồn tại, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu."
+}
+```
+
+> **Lưu ý:**
+> - Luôn trả về thành công để tránh email enumeration attack
+> - Link reset có hiệu lực trong 30 phút
+
+---
+
+### POST `/auth/reset-password` (public)
+Đặt lại mật khẩu với token từ email.
+
+**Body:**
+```json
+{
+  "token": "abc123...",
+  "new_password": "new_secure_password"
+}
+```
+
+**Response:**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "Đặt lại mật khẩu thành công"
+}
+```
+
+> **Lưu ý:**
+> - Token có hiệu lực trong 30 phút
+> - Mỗi token chỉ sử dụng được 1 lần
+> - Mật khẩu mới phải có ít nhất 6 ký tự
+
+---
+
+### POST `/auth/change-password` (auth required)
+Đổi mật khẩu khi đã đăng nhập.
+
+**Body:**
+```json
+{
+  "old_password": "current_password",
+  "new_password": "new_secure_password"
+}
+```
+
+**Response:**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "Đổi mật khẩu thành công"
+}
+```
+
+> **Yêu cầu:** Header Authorization với access token
+
+---
+
+### DELETE `/auth/users/{user_id}` (admin)
+Xóa vĩnh viễn tài khoản người dùng (Hard Delete).
+
+**Path params:** `user_id` - ID của user cần xóa
+
+**Response:**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "Xóa tài khoản 'username' thành công"
+}
+```
+
+> **Lưu ý:**
+> - Chỉ Admin mới có quyền xóa
+> - Không thể tự xóa chính mình
+> - Dữ liệu sẽ bị xóa vĩnh viễn
+
+---
+
+### POST `/auth/users/{user_id}/deactivate` (admin)
+Vô hiệu hóa tài khoản người dùng (Soft Delete).
+
+**Path params:** `user_id` - ID của user cần vô hiệu hóa
+
+**Response:**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "Vô hiệu hóa tài khoản thành công",
+  "data": {
+    "user_id": 2,
+    "username": "teacher01",
+    "is_active": false
+  }
+}
+```
+
+> **Lưu ý:**
+> - User sẽ không thể đăng nhập
+> - Dữ liệu vẫn được giữ nguyên
+> - Có thể kích hoạt lại sau
+> - Không thể tự vô hiệu hóa chính mình
+
+---
+
+### POST `/auth/users/{user_id}/reactivate` (admin)
+Kích hoạt lại tài khoản người dùng đã bị vô hiệu hóa.
+
+**Path params:** `user_id` - ID của user cần kích hoạt lại
+
+**Response:**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "Kích hoạt tài khoản thành công",
+  "data": {
+    "user_id": 2,
+    "username": "teacher01",
+    "is_active": true
+  }
+}
+```
 
 ---
 
@@ -1483,6 +1676,15 @@ Authorization: Bearer <access_token>
 - `JWT_EXPIRE_MINUTES` (default: 60)
 - `JWT_REFRESH_EXPIRE_MINUTES` (default: 43200)
 - `BOOTSTRAP_SECRET` - Secret key cho bootstrap admin (nên đổi khi deploy)
+
+### Email Configuration (for sending teacher account emails)
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `EMAIL_SENDER` | Gmail address to send from | `monitor@gmail.com` |
+| `EMAIL_PASSWORD` | Gmail App Password (16 chars) | `abcd efgh ijkl mnop` |
+| `EMAIL_RECEIVER` | Default receiver (comma-separated) | `admin@school.com` |
+
+> **Note:** To create Gmail App Password: 1) Enable 2-Step Verification, 2) Go to myaccount.google.com/apppasswords, 3) Create for 'Mail'
 
 ---
 ## 19. Admin Timetable & Attendance

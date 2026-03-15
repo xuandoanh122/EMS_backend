@@ -10,7 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions.database import DatabaseQueryException
-from app.modules.auth.entity import TokenBlacklist, User
+from app.modules.auth.entity import TokenBlacklist, User, PasswordResetToken
 from app.modules.teacher.entity import Teacher
 
 
@@ -35,6 +35,16 @@ class AuthRepository:
             return result.scalars().first()
         except SQLAlchemyError as exc:
             raise DatabaseQueryException(operation="get_user_by_id", reason=str(exc)) from exc
+
+    async def get_user_by_teacher_id(self, teacher_id: int) -> Optional[User]:
+        """Lấy user theo teacher_id."""
+        try:
+            result = await self._s.execute(
+                select(User).where(User.teacher_id == teacher_id)
+            )
+            return result.scalars().first()
+        except SQLAlchemyError as exc:
+            raise DatabaseQueryException(operation="get_user_by_teacher_id", reason=str(exc)) from exc
 
     async def list_users(
         self,
@@ -116,3 +126,65 @@ class AuthRepository:
             return result.scalar() is not None
         except SQLAlchemyError as exc:
             raise DatabaseQueryException(operation="is_blacklisted", reason=str(exc)) from exc
+
+    # ----------------------------------------------------------------
+    # Password Reset
+    # ----------------------------------------------------------------
+
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        """Lấy user theo email (qua teacher relationship)."""
+        try:
+            # Join với teachers để tìm theo email
+            from app.modules.teacher.entity import Teacher
+            result = await self._s.execute(
+                select(User)
+                .join(Teacher, User.teacher_id == Teacher.id)
+                .where(Teacher.email == email)
+            )
+            return result.scalars().first()
+        except SQLAlchemyError as exc:
+            raise DatabaseQueryException(operation="get_user_by_email", reason=str(exc)) from exc
+
+    async def create_password_reset_token(self, token_obj: PasswordResetToken) -> PasswordResetToken:
+        """Tạo token reset mật khẩu."""
+        try:
+            self._s.add(token_obj)
+            await self._s.commit()
+            await self._s.refresh(token_obj)
+            return token_obj
+        except SQLAlchemyError as exc:
+            await self._s.rollback()
+            raise DatabaseQueryException(operation="create_password_reset_token", reason=str(exc)) from exc
+
+    async def get_valid_password_reset_token(self, token: str) -> Optional[PasswordResetToken]:
+        """Lấy token reset còn hiệu lực."""
+        try:
+            result = await self._s.execute(
+                select(PasswordResetToken)
+                .where(
+                    PasswordResetToken.token == token,
+                    PasswordResetToken.used_at.is_(None),
+                    PasswordResetToken.expires_at > datetime.utcnow()
+                )
+            )
+            return result.scalars().first()
+        except SQLAlchemyError as exc:
+            raise DatabaseQueryException(operation="get_valid_password_reset_token", reason=str(exc)) from exc
+
+    async def mark_password_reset_token_used(self, token_obj: PasswordResetToken) -> None:
+        """Đánh dấu token đã sử dụng."""
+        try:
+            token_obj.used_at = datetime.utcnow()
+            await self._s.commit()
+        except SQLAlchemyError as exc:
+            await self._s.rollback()
+            raise DatabaseQueryException(operation="mark_password_reset_token_used", reason=str(exc)) from exc
+
+    async def delete_user(self, user: User) -> None:
+        """Xóa vĩnh viễn user (hard delete)."""
+        try:
+            await self._s.delete(user)
+            await self._s.commit()
+        except SQLAlchemyError as exc:
+            await self._s.rollback()
+            raise DatabaseQueryException(operation="delete_user", reason=str(exc)) from exc

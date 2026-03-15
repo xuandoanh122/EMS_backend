@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import sqlite3; conn = sqlite3.connect('ems_backup.db'); cursor = conn.cursor(); cursor.execute('SELECT COUNT(*) FROM teachers'); print('Teachers:', cursor.fetchone()[0]); cursor.execute('SELECT COUNT(*) FROM users'); print('Users:', cursor.fetchone()[0]); conn.close()
+                                                                                     ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: no such table: teachers
