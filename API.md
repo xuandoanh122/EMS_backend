@@ -1304,8 +1304,85 @@ Lịch dạy tuần/tháng.
 
 ## 18. Auth
 
-**Bootstrap admin:** cần seed bảng `users` bằng mật khẩu đã hash (dùng `app.core.security.get_password_hash`).
+> **Important:** Hệ thống yêu cầu tài khoản admin đầu tiên để hoạt động. Có 2 cách thiết lập:
 
+### Cách 1: Sử dụng CLI (Khuyến nghị)
+```bash
+python -m app.scripts.create_admin --username admin --password your_secure_password
+```
+
+### Cách 2: Sử dụng API Bootstrap
+Xem mục **Bootstrap Endpoints** bên dưới.
+
+---
+
+## Bootstrap Endpoints
+
+> Dùng để tạo admin user đầu tiên khi hệ thống chưa có user nào.
+
+| Method | Path | Mô tả | Quyền |
+|--------|------|-------|-------|
+| GET | `/auth/init/status` | Kiểm tra hệ thống đã init chưa | Public |
+| POST | `/auth/init/admin` | Tạo admin user đầu tiên | Public (cần secret key) |
+
+---
+
+### GET `/auth/init/status`
+Kiểm tra xem hệ thống đã có admin chưa.
+
+**Response:**
+```json
+{
+  "initialized": true,
+  "message": "System is ready"
+}
+```
+
+---
+
+### POST `/auth/init/admin`
+Tạo admin user đầu tiên.
+
+**Headers:**
+```
+Content-Type: application/json
+```
+
+**Body:**
+```json
+{
+  "secret": "ems-bootstrap-secret-change-me",
+  "username": "admin",
+  "password": "admin123"
+}
+```
+
+**Response:**
+```json
+{
+  "code": 201,
+  "message": "Success",
+  "detail": "Admin user created successfully",
+  "data": {
+    "id": 1,
+    "username": "admin",
+    "role": "admin",
+    "message": "Admin user created successfully"
+  }
+}
+```
+
+> **Lưu ý:** 
+> - Endpoint này chỉ hoạt động khi chưa có user admin nào trong hệ thống.
+> - Cần đặt biến môi trường `BOOTSTRAP_SECRET` trong file `.env` để bảo mật.
+> - Sau khi tạo admin thành công, nên vô hiệu hóa hoặc xóa endpoint này.
+
+---
+
+**ENV:**
+- `BOOTSTRAP_SECRET` - Secret key cho bootstrap (default: "ems-bootstrap-secret-key-change-me")
+
+---
 
 ### POST `/auth/login`
 Đăng nhập lấy JWT.
@@ -1405,6 +1482,7 @@ Authorization: Bearer <access_token>
 - `JWT_ALGORITHM` (default: HS256)
 - `JWT_EXPIRE_MINUTES` (default: 60)
 - `JWT_REFRESH_EXPIRE_MINUTES` (default: 43200)
+- `BOOTSTRAP_SECRET` - Secret key cho bootstrap admin (nên đổi khi deploy)
 
 ---
 ## 19. Admin Timetable & Attendance

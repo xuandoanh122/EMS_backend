@@ -1,4 +1,4 @@
-﻿"""
+"""
 EMS (Education Management System) - FastAPI Application Entry Point.
 
 This is the main application file that creates and configures the FastAPI
@@ -84,6 +84,7 @@ def create_app() -> FastAPI:
     from app.modules.salary.controller import router as salary_router
     from app.modules.dashboard.controller import router as dashboard_router
     from app.modules.auth.controller import router as auth_router
+    from app.modules.auth.init_routes import router as init_router
     from app.modules.lookups.controller import router as lookups_router
     from app.modules.teacher_portal.controller import admin_router as teacher_portal_admin_router
     from app.modules.teacher_portal.controller import router as teacher_portal_router
@@ -95,8 +96,10 @@ def create_app() -> FastAPI:
     app.include_router(salary_router,    prefix="/api/v1/salary",     tags=["Salary"])
     app.include_router(dashboard_router, prefix="/api/v1/dashboard",  tags=["Dashboard"])
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
+    app.include_router(init_router, prefix="/api/v1/auth", tags=["Bootstrap"])
     app.include_router(lookups_router, prefix="/api/v1/lookups", tags=["Lookups"])
     app.include_router(teacher_portal_admin_router, prefix="/api/v1/admin", tags=["Admin"])
+    app.include_router(teacher_portal_router, prefix="/api/v1/teacher", tags=["Teacher Portal"])
 
 
     # â”€â”€ Health check endpoint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

@@ -103,19 +103,19 @@ class TimetableEntry(Base):
     )
     classroom_id = Column(
         Integer,
-        ForeignKey("classrooms.id", ondelete="SET NULL"),
+        ForeignKey("classrooms.id", ondelete="NO ACTION"),
         nullable=True,
         index=True,
     )
     class_subject_id = Column(
         Integer,
-        ForeignKey("class_subjects.id", ondelete="SET NULL"),
+        ForeignKey("class_subjects.id", ondelete="NO ACTION"),
         nullable=True,
         index=True,
     )
     subject_id = Column(
         Integer,
-        ForeignKey("subjects.id", ondelete="SET NULL"),
+        ForeignKey("subjects.id", ondelete="NO ACTION"),
         nullable=True,
         index=True,
     )
