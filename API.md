@@ -1,1807 +1,1114 @@
-# EMS – API Reference & FE/BE Contract
+# EMS - API Reference
 
 > Base URL: `http://localhost:8000/api/v1`
-> Tất cả response đều bọc trong envelope `APIResponse`:
+> 
+> All responses follow the standard APIResponse format:
 > ```json
-> { "code": 200, "message": "OK", "detail": "...", "data": { ... }, "errors": null }
+> { "code": 200, "message": "Success", "detail": "...", "data": { ... }, "errors": null }
 > ```
 
-**Auth & RBAC**
-- Header cho endpoint báº£o vá»‡: `Authorization: Bearer <access_token>`
-- Role access:
-- `admin`: Dashboard, Students, Teachers, Classrooms
-- `admin | teacher`: Grading
-- `admin | accountant`: Salary
-- `teacher`: Teacher Portal (`/api/v1/teacher/*`)
-- `admin`: Admin Timetable/Attendance (`/api/v1/admin/*`)
-- `admin`: Lookups (`/api/v1/lookups/*`)
+---
+
+## HTTP Status Codes
+
+| Code | Message | Description |
+|------|---------|-------------|
+| 200 | Success | Request completed successfully |
+| 201 | Created | Resource created successfully |
+| 400 | Bad Request | Invalid request format |
+| 401 | Unauthorized | Authentication required or token invalid |
+| 403 | Forbidden | Insufficient permissions |
+| 404 | Not Found | Resource not found |
+| 409 | Conflict | Resource already exists |
+| 422 | Validation Error | Invalid input data |
+| 500 | Internal Server Error | Server error |
 
 ---
 
-## Má»¥c lá»¥c
+## Common Error Messages
 
-1. [System](#1-system)
-2. [Dashboard](#2-dashboard)
-3. [Students](#3-students)
-4. [Teachers](#4-teachers)
-5. [Classrooms](#5-classrooms)
-6. [Enrollments](#6-enrollments-lá»“ng-trong-classrooms)
-7. [Grading â€“ Subjects](#7-grading--subjects)
-8. [Grading â€“ Class Subjects](#8-grading--class-subjects-phÃ¢n-cÃ´ng)
-9. [Grading â€“ Grade Components](#9-grading--grade-components)
-10. [Grading â€“ Student Grades](#10-grading--student-grades)
-11. [Grading â€“ Reports & Statistics](#11-grading--reports--statistics)
-12. [Salary â€“ Salary Grades](#12-salary--salary-grades)
-13. [Salary â€“ Bonus Policies](#13-salary--bonus-policies)
-14. [Salary â€“ Payrolls](#14-salary--payrolls)
-15. [Enums Reference](#15-enums-reference)
-16. [Business Logic & Luá»“ng xá»­ lÃ½](#16-business-logic--luá»“ng-xá»­-lÃ½)
-17. [Teacher Portal (Phase 1)](#17-teacher-portal-phase-1)
-18. [Auth](#18-auth)
-19. [Admin Timetable & Attendance](#19-admin-timetable--attendance)
-20. [Lookups](#20-lookups)
+| Error | Detail | Description |
+|-------|--------|-------------|
+| Invalid Credentials | The provided username or password is incorrect | Wrong username/email or password |
+| Account Disabled | Your account has been disabled. Please contact administrator. | User account is deactivated |
+| Token Invalid | Invalid or malformed token | JWT token is invalid |
+| Token Expired | Token has expired. Please login again. | JWT token has expired |
+| Token Blacklisted | This token has been revoked. Please login again. | Token was logged out |
+| Not Found | {resource} not found | Requested resource doesn't exist |
+| Already Exists | {resource} already exists | Duplicate resource |
+| Validation Error | {detail} | Input validation failed |
 
 ---
 
-## 1. Nguyên tắc phân công FE / BE
+## Authentication & Authorization
 
-| Method | Path | MÃ´ táº£ |
-|--------|------|-------|
-| GET | `/health` | Health check |
+- **Protected endpoints** require header: `Authorization: Bearer <access_token>`
+- **Roles**: `admin`, `teacher`, `accountant`
+
+| Role | Access |
+|------|--------|
+| admin | Full access to all modules |
+| teacher | Teacher Portal, Grading |
+| accountant | Salary module |
 
 ---
 
-## 2. System & Lookups
+## Endpoints Summary
+
+| Module | Prefix | Description |
+|--------|--------|-------------|
+| System | `/` | Health check |
+| Auth | `/auth` | Login, logout, password management |
+| Bootstrap | `/auth/init` | Initial admin creation |
+| Students | `/students` | Student management |
+| Teachers | `/teachers` | Teacher management |
+| Classrooms | `/classrooms` | Class & enrollment management |
+| Grading | `/grading` | Subjects, grades, reports |
+| Salary | `/salary` | Payroll, bonuses |
+| Dashboard | `/dashboard` | Statistics |
+| Lookups | `/lookups` | Dropdown data |
+| Teacher Portal | `/teacher` | Teacher workspace |
+| Admin | `/admin` | Admin timetable & attendance |
+
+---
+
+## 1. System
 
 ### GET `/health`
-Health check.
+Health check endpoint.
 
----
-
-### Lookup APIs (BE cần tạo mới – FE dùng cho Dropdown)
-
-> Các API này trả về danh sách gọn `{id, label}` để FE render Dropdown/Combobox.
-> Không cần phân trang – giới hạn 200 items.
-
-| Method | Path | Mô tả | Dùng ở đâu |
-|--------|------|-------|-----------|
-| GET | `/lookups/teachers` | Danh sách GV đang active | Dropdown chọn GVCN, phân công lớp |
-| GET | `/lookups/classrooms` | Danh sách lớp đang active | Dropdown chọn lớp khi tạo HS, tạo enrollment |
-| GET | `/lookups/students` | Tìm kiếm HS theo tên/mã | Combobox thêm HS vào lớp |
-| GET | `/lookups/subjects` | Danh sách môn học đang active | Dropdown phân công môn |
-
-**Query params chung cho lookups:**
-| Param | Type | Mô tả |
-|-------|------|-------|
-| `search` | string | Tìm kiếm theo tên hoặc mã (optional) |
-| `limit` | int | Mặc định: 100, tối đa: 200 |
-
-**Response mẫu `GET /lookups/teachers`:**
+**Response:**
 ```json
 {
-  "data": [
-    { "id": 1, "label": "Trần Thị Mai", "sub_label": "Tchr2603001" },
-    { "id": 2, "label": "Nguyễn Văn Hùng", "sub_label": "Tchr2603002" }
-  ]
-}
-```
-
-**Response mẫu `GET /lookups/students`:**
-```json
-{
-  "data": [
-    { "id": 1, "label": "Nguyễn Văn An", "sub_label": "Stud2603001 · Lớp IELTS Basic" },
-    { "id": 2, "label": "Trần Thị B", "sub_label": "Stud2603002 · Chờ xếp lớp" }
-  ]
-}
-```
-
----
-
-## 3. Dashboard
-
-### GET `/dashboard/stats`
-Thá»‘ng kÃª tá»•ng quan há»‡ thá»‘ng.
-
-**Response data:**
-```json
-{
-  "total_students": 120,
-  "total_teachers": 15,
-  "total_classrooms": 8,
-  "active_students": 110,
-  "active_teachers": 13,
-  "recent_students": [ ...5 há»c sinh má»›i nháº¥t... ],
-  "recent_teachers": [ ...5 giÃ¡o viÃªn má»›i nháº¥t... ]
-}
-```
-
-> **FE:** Hiển thị thêm card "Học sinh chờ xếp lớp" (`pending_enrollment_students`) để admin biết cần xử lý.
-> **BE:** Thêm field `pending_enrollment_students` vào response (đếm HS có `academic_status = active` nhưng chưa có enrollment active nào).
-
----
-
-## 4. Students
-
-### Quy tắc mã học sinh
-- Format: `Stud` + `YYMM` + `xxx` (3 chữ số STT trong tháng, zero-padded)
-- Ví dụ: `Stud2603001` = học sinh thứ 1 được tạo trong tháng 03/2026
-- **BE tự sinh** khi nhận `POST /students` – FE không gửi field này
-
----
-
-### POST `/students`
-Táº¡o há»c sinh má»›i.
-
-**FE gửi (required: `*`):**
-```json
-{
-  "student_code": "SV2024001",       // * unique, max 20 kÃ½ tá»±
-  "full_name": "Nguyen Van An",      // * max 150 kÃ½ tá»±
-  "date_of_birth": "2006-05-15",     // optional, YYYY-MM-DD
-  "gender": "male",                  // optional: "male" | "female" | "other"
-  "national_id": "012345678901",     // optional, unique, max 20
-  "email": "an@student.edu.vn",      // optional, unique
-  "phone_number": "0901234567",      // optional, max 20
-  "address": "...",                  // optional
-  "enrollment_date": "2024-09-01",   // optional, YYYY-MM-DD
-  "academic_status": "active",       // optional, default: "active"
-  "class_name": "12A1",              // optional, max 50
-  "program_name": "CNTT",            // optional, max 200
-  "parent_full_name": "...",         // optional, max 150
-  "parent_phone": "0912345678",      // optional, max 20
-  "parent_email": "...",             // optional
-  "medical_notes": "..."             // optional
-}
-```
-
----
-
-### GET `/students`
-Danh sÃ¡ch há»c sinh (phÃ¢n trang + lá»c).
-
-**Query params:**
-| Param | Type | MÃ´ táº£ |
-|-------|------|-------|
-| `search` | string | TÃ¬m theo `student_code`, `full_name`, `email` |
-| `academic_status` | enum | `active` \| `preserved` \| `suspended` \| `graduated` |
-| `class_name` | string | Lá»c theo lá»›p |
-| `program_name` | string | Lá»c theo chÆ°Æ¡ng trÃ¬nh |
-| `page` | int â‰¥ 1 | Máº·c Ä‘á»‹nh: 1 |
-| `page_size` | int 1â€“100 | Máº·c Ä‘á»‹nh: 20 |
-
-> **FE cần thêm:** Filter "Chờ xếp lớp" (`has_enrollment=false`) ở màn hình danh sách HS.
-> **BE cần thêm:** Query param `has_enrollment` và `classroom_id`.
-
----
-
-### GET `/students/{student_code}`
-Chi tiáº¿t 1 há»c sinh theo mÃ£.
-
----
-
-### PATCH `/students/{student_code}`
-Cáº­p nháº­t thÃ´ng tin há»c sinh (partial update â€“ chá»‰ gá»­i fields cáº§n sá»­a).
-
-**Body:** Táº¥t cáº£ fields Ä‘á»u optional (giá»‘ng Create nhÆ°ng khÃ´ng cÃ³ `student_code`):
-```json
-{
-  "phone_number": "0909999888",
-  "address": "123 Nguyen Hue, Q1",
-  "parent_phone": "0911111222"
-}
-```
-
-> **Lưu ý:** KHÔNG cho phép sửa `student_code` qua API này. `class_name`, `program_name` (text) đã bị loại bỏ – việc thay đổi lớp học phải đi qua Enrollment API.
-
----
-
-### PATCH `/students/{student_code}/status`
-Thay Ä‘á»•i tráº¡ng thÃ¡i há»c vá»¥.
-
-**Body:**
-```json
-{
-  "new_status": "preserved",   // * enum StudentStatus
-  "reason": "Nghá»‰ há»c vÃ¬ lÃ½ do cÃ¡ nhÃ¢n"  // optional
-}
-```
-
-**Luá»“ng chuyá»ƒn tráº¡ng thÃ¡i há»£p lá»‡:**
-```
-active â†’ preserved | suspended | graduated
-preserved â†’ active | suspended
-suspended â†’ active
-graduated â†’ (terminal â€“ khÃ´ng thá»ƒ chuyá»ƒn)
-```
-
----
-
-### DELETE `/students/{student_code}`
-Soft-delete há»c sinh (`is_active = false`). Dá»¯ liá»‡u váº«n giá»¯ láº¡i trong DB.
-
----
-
-## 5. Teachers
-
-### Quy tắc mã giáo viên
-- Format: `Tchr` + `YYMM` + `xxx` (3 chữ số STT trong tháng, zero-padded)
-- Ví dụ: `Tchr2603001` = giáo viên thứ 1 được tạo trong tháng 03/2026
-- **BE tự sinh** khi nhận `POST /teachers` – FE không gửi field này
-
----
-
-### POST `/teachers`
-Táº¡o giÃ¡o viÃªn má»›i.
-
-**FE gửi (required: `*`):**
-```json
-{
-  "teacher_code": "GV2024001",       // * unique, max 20
-  "full_name": "Tran Thi Mai",       // * max 150
-  "date_of_birth": "1985-03-20",     // optional
-  "gender": "female",                // optional: "male" | "female" | "other"
-  "national_id": "...",              // optional, unique, max 20
-  "email": "mai@school.edu.vn",      // optional, unique
-  "phone_number": "0987654321",      // optional, max 20
-  "address": "...",                  // optional
-  "join_date": "2024-09-01",         // optional
-  "employment_status": "active",     // optional, default: "active"
-  "specialization": "ToÃ¡n há»c",      // optional, max 200
-  "qualification": "Tháº¡c sÄ©",        // optional, max 200
-  "department": "Khoa há»c tá»± nhiÃªn"  // optional, max 200
-}
-```
-
----
-
-### GET `/teachers`
-Danh sÃ¡ch giÃ¡o viÃªn (phÃ¢n trang + lá»c).
-
-**Query params:**
-| Param | Type | MÃ´ táº£ |
-|-------|------|-------|
-| `search` | string | TÃ¬m theo `teacher_code`, `full_name`, `email` |
-| `employment_status` | enum | `active` \| `on_leave` \| `resigned` \| `retired` |
-| `department` | string | Lá»c theo phÃ²ng ban |
-| `specialization` | string | Lá»c theo chuyÃªn mÃ´n |
-| `page` | int â‰¥ 1 | Máº·c Ä‘á»‹nh: 1 |
-| `page_size` | int 1â€“100 | Máº·c Ä‘á»‹nh: 20 |
-
----
-
-### GET `/teachers/{teacher_code}`
-Chi tiáº¿t 1 giÃ¡o viÃªn.
-
----
-
-### PATCH `/teachers/{teacher_code}`
-Cáº­p nháº­t thÃ´ng tin giÃ¡o viÃªn (partial update).
-
-**Body:** Táº¥t cáº£ fields optional (khÃ´ng cÃ³ `teacher_code`):
-```json
-{
-  "phone_number": "0909999888",
-  "department": "Khoa há»c xÃ£ há»™i",
-  "join_date": "2024-01-01"
-}
-```
-
----
-
-### PATCH `/teachers/{teacher_code}/status`
-Thay Ä‘á»•i tráº¡ng thÃ¡i cÃ´ng tÃ¡c.
-
-**Body:**
-```json
-{
-  "new_status": "on_leave",        // * enum TeacherStatus
-  "reason": "Nghá»‰ thai sáº£n 6 thÃ¡ng"  // optional
-}
-```
-
-**Luá»“ng chuyá»ƒn tráº¡ng thÃ¡i há»£p lá»‡:**
-```
-active â†’ on_leave | resigned | retired
-on_leave â†’ active | resigned
-resigned â†’ (terminal)
-retired â†’ (terminal)
-```
-
----
-
-### DELETE `/teachers/{teacher_code}`
-Soft-delete giÃ¡o viÃªn.
-
----
-
-## 6. Classrooms
-
-> **Mô hình trung tâm:** 1 lớp = 1 môn học cụ thể (VD: lớp IELTS Basic tối T2T4).
-> Giáo viên phụ trách được gán qua Class Subjects (Section 9), không phải trực tiếp trên Classroom.
-
-### POST `/classrooms`
-Táº¡o lá»›p há»c má»›i.
-
-**FE gửi (required: `*`):**
-```json
-{
-  "class_code": "10A1-2024",         // * unique, max 30
-  "class_name": "Lá»›p 10A1",          // * max 100
-  "class_type": "standard",          // optional, default: "standard"
-  "academic_year": "2024-2025",      // * format "YYYY-YYYY"
-  "grade_level": 10,                 // * integer 1â€“13
-  "max_capacity": 40,                // optional, default: 40 (1â€“200)
-  "homeroom_teacher_id": 3,          // optional, FK â†’ teachers.id
-  "room_number": "P.201",            // optional, max 20
-  "description": "..."               // optional, max 300
-}
-```
-
-> **Logic:** `class_code` pháº£i unique. Há»‡ thá»‘ng tá»± track `current_enrollment` (khÃ´ng nháº­p tay).
-
----
-
-### GET `/classrooms`
-Danh sÃ¡ch lá»›p há»c (phÃ¢n trang + lá»c).
-
-**Query params:**
-| Param | Type | MÃ´ táº£ |
-|-------|------|-------|
-| `search` | string | TÃ¬m theo `class_code` hoáº·c `class_name` |
-| `class_type` | enum | `standard` \| `specialized` \| `advanced` |
-| `academic_year` | string | VD: `"2024-2025"` |
-| `grade_level` | int 1â€“13 | Khá»‘i lá»›p |
-| `homeroom_teacher_id` | int | ID giÃ¡o viÃªn chá»§ nhiá»‡m |
-| `page` | int â‰¥ 1 | Máº·c Ä‘á»‹nh: 1 |
-| `page_size` | int 1â€“100 | Máº·c Ä‘á»‹nh: 20 |
-
-> **BE cần thêm:** `has_capacity` filter.
-
----
-
-### GET `/classrooms/{class_code}`
-Chi tiáº¿t 1 lá»›p há»c.
-
----
-
-### PATCH `/classrooms/{class_code}`
-Cáº­p nháº­t thÃ´ng tin lá»›p há»c.
-
-**Body:** Táº¥t cáº£ fields optional:
-```json
-{
-  "room_number": "P.305",
-  "max_capacity": 25,
-  "homeroom_teacher_id": 3,
-  "description": "..."
-}
-```
-
----
-
-### PATCH `/classrooms/{class_code}/status`
-Cáº­p nháº­t tráº¡ng thÃ¡i lÃ³p (active / inactive).
-
-**Body:**
-```json
-{ "is_active": false }
-```
-
-*Ghi chú:* có thể gửi `new_status` = `"active"` | `"inactive"`.
-
----
-
-### DELETE `/classrooms/{class_code}`
-Soft-delete lá»›p há»c.
-
----
-
-## 6. Enrollments (lá»“ng trong Classrooms)
-
-### POST `/classrooms/{class_code}/enrollments`
-ÄÄƒng kÃ½ há»c sinh vÃ o lá»›p.
-
-**Path:** `class_code` â€“ mÃ£ lá»›p (string).
-
-**Body (required: `*`):**
-```json
-{
-  "student_id": 1,                   // * FK â†’ students.id
-  "classroom_id": 2,                 // * FK â†’ classrooms.id (sáº½ bá»‹ override bá»Ÿi path param)
-  "enrollment_type": "primary",      // optional, default: "primary"
-  "enrolled_date": "2024-09-01",     // optional
-  "notes": "Chuyá»ƒn Ä‘áº¿n tá»« trÆ°á»ng khÃ¡c"  // optional, max 300
-}
-```
-
-> **Logic nghiá»‡p vá»¥:**
-> 1. Kiá»ƒm tra lá»›p tá»“n táº¡i (theo `class_code`).
-> 2. Kiá»ƒm tra `current_enrollment < max_capacity` â†’ náº¿u Ä‘áº§y: `ClassroomCapacityExceeded`.
-> 3. Náº¿u `enrollment_type = "primary"`: kiá»ƒm tra há»c sinh chÆ°a cÃ³ lá»›p chÃ­nh nÃ o Ä‘ang active â†’ náº¿u cÃ³: `DuplicatePrimaryEnrollment`.
-> 4. Kiá»ƒm tra khÃ´ng trÃ¹ng láº·p cÃ¹ng loáº¡i enrollment trong cÃ¹ng lá»›p â†’ `EnrollmentAlreadyExists`.
-
----
-
-### GET `/classrooms/{class_code}/enrollments`
-Danh sÃ¡ch há»c sinh trong lá»›p.
-
-**Path:** `class_code` â€“ mÃ£ lá»›p.
-
-**Query params:**
-| Param | Type | Máº·c Ä‘á»‹nh |
-|-------|------|---------|
-| `page` | int â‰¥ 1 | 1 |
-| `page_size` | int 1â€“200 | 50 |
-
----
-
-### GET `/classrooms/enrollments/{enrollment_id}`
-Chi tiáº¿t 1 báº£n ghi enrollment.
-
----
-
-### PATCH `/classrooms/enrollments/{enrollment_id}`
-Cáº­p nháº­t ghi chÃº enrollment.
-
-**Body:**
-```json
-{
-  "notes": "Há»c sinh chuyá»ƒn Ä‘áº¿n tá»« trÆ°á»ng khÃ¡c"  // optional, max 300
-}
-```
-
----
-
-### PATCH `/classrooms/enrollments/{enrollment_id}/status`
-Thay Ä‘á»•i tráº¡ng thÃ¡i enrollment.
-
-**Body:**
-```json
-{
-  "new_status": "transferred",       // * enum EnrollmentStatus
-  "left_date": "2024-12-01",         // optional
-  "notes": "Chuyá»ƒn sang lá»›p 10A2"    // optional, max 300
-}
-```
-
-**Luá»“ng chuyá»ƒn tráº¡ng thÃ¡i há»£p lá»‡:**
-```
-active â†’ transferred | withdrawn | completed
-transferred â†’ (terminal)
-withdrawn â†’ (terminal)
-completed â†’ (terminal)
-```
-
-> **BE logic khi chuyển khỏi `active`:** Giảm `current_enrollment` của lớp -1.
-
----
-
-### GET `/classrooms/students/{student_id}/enrollments`
-Táº¥t cáº£ lá»›p mÃ  1 há»c sinh Ä‘ang/Ä‘Ã£ tham gia.
-
----
-
-## 7. Grading â€“ Subjects
-
-### POST `/grading/subjects`
-Táº¡o mÃ´n há»c.
-
-**Body (required: `*`):**
-```json
-{
-  "subject_code": "TOAN",            // * unique, max 20
-  "subject_name": "ToÃ¡n há»c",        // * max 100
-  "subject_type": "standard",        // optional, default: "standard"
-  "credits": 4,                      // optional, default: 1 (1â€“10)
-  "description": "..."               // optional, max 300
-}
-```
-
----
-
-### GET `/grading/subjects`
-Danh sÃ¡ch mÃ´n há»c.
-
-**Query params:**
-| Param | Type | Máº·c Ä‘á»‹nh |
-|-------|------|---------|
-| `page` | int â‰¥ 1 | 1 |
-| `page_size` | int 1â€“100 | 20 |
-| `active_only` | bool | `true` |
-
----
-
-### GET `/grading/subjects/{subject_code}`
-Chi tiáº¿t mÃ´n há»c.
-
----
-
-### PATCH `/grading/subjects/{subject_code}`
-Cáº­p nháº­t mÃ´n há»c.
-
-**Body:** Táº¥t cáº£ optional:
-```json
-{
-  "subject_name": "ToÃ¡n cao cáº¥p",
-  "subject_name": "IELTS Academic",
-  "credits": 5,
-  "description": "...",
-  "is_active": true
-}
-```
-
----
-
-## 8. Grading â€“ Class Subjects (PhÃ¢n cÃ´ng)
-
-> **Class Subject** = MÃ´n há»c Ä‘Æ°á»£c phÃ¢n cÃ´ng dáº¡y táº¡i 1 lá»›p, 1 há»c ká»³, bá»Ÿi 1 giÃ¡o viÃªn.  
-> ÄÃ¢y lÃ  Ä‘Æ¡n vá»‹ gá»‘c Ä‘á»ƒ nháº­p Ä‘iá»ƒm.
-
-### POST `/grading/class-subjects`
-PhÃ¢n cÃ´ng mÃ´n há»c cho lá»›p + giÃ¡o viÃªn.
-
-**FE gửi (required: `*`):**
-```json
-{
-  "classroom_id": 1,                 // * FK â†’ classrooms.id
-  "subject_id": 2,                   // * FK â†’ subjects.id
-  "teacher_id": 3,                   // optional, FK â†’ teachers.id
-  "semester": 1,                     // * 1 hoáº·c 2
-  "academic_year": "2024-2025"       // * format "YYYY-YYYY"
-}
-```
-
-> **Logic:** KhÃ´ng Ä‘Æ°á»£c táº¡o trÃ¹ng `(classroom_id, subject_id, semester, academic_year)`.
-
----
-
-### GET `/grading/class-subjects`
-Danh sÃ¡ch phÃ¢n cÃ´ng mÃ´n.
-
-**Query params:**
-| Param | Type | MÃ´ táº£ |
-|-------|------|-------|
-| `classroom_id` | int | Lá»c theo lá»›p |
-| `teacher_id` | int | Lá»c theo giÃ¡o viÃªn |
-| `academic_year` | string | VD: `"2024-2025"` |
-| `semester` | int 1â€“2 | Há»c ká»³ |
-| `page` | int â‰¥ 1 | Máº·c Ä‘á»‹nh: 1 |
-| `page_size` | int 1â€“200 | Máº·c Ä‘á»‹nh: 50 |
-
----
-
-### GET `/grading/class-subjects/{cs_id}`
-Chi tiáº¿t phÃ¢n cÃ´ng mÃ´n.
-
----
-
-### PATCH `/grading/class-subjects/{cs_id}`
-Cáº­p nháº­t phÃ¢n cÃ´ng (Ä‘á»•i/gÃ¡n giÃ¡o viÃªn, báº­t/táº¯t).
-
-**Body:**
-```json
-{
-  "teacher_id": 5,
-  "is_active": true
-}
-```
-
----
-
-## 9. Grading â€“ Grade Components
-
-> **Grade Component** = ThÃ nh pháº§n Ä‘iá»ƒm (miá»‡ng, 15 phÃºt, 1 tiáº¿t, há»c ká»³â€¦) cá»§a 1 Class Subject.  
-> Má»—i component cÃ³ trá»ng sá»‘ (`weight_percent`). Tá»•ng weight cá»§a cÃ¡c component trong 1 class-subject nÃªn = 100%.
-
-### POST `/grading/grade-components`
-Táº¡o thÃ nh pháº§n Ä‘iá»ƒm.
-
-**Body (required: `*`):**
-```json
-{
-  "class_subject_id": 1,             // * FK â†’ class_subjects.id
-  "component_name": "Kiá»ƒm tra miá»‡ng", // * max 100
-  "weight_percent": 10,              // * 1â€“100 (%)
-  "min_count": 2                     // optional, default: 1 â€“ sá»‘ bÃ i tá»‘i thiá»ƒu
-}
-```
-
-> **FE cần làm:** Sau khi tạo Class Subject, hiển thị bước "Cấu hình thành phần điểm" ngay. Hiển thị thanh progress tổng weight (0–100%) để người dùng biết còn bao nhiêu % chưa phân bổ.
-
----
-
-### GET `/grading/grade-components/{class_subject_id}`
-Danh sÃ¡ch thÃ nh pháº§n Ä‘iá»ƒm cá»§a 1 class-subject.
-
----
-
-### PATCH `/grading/grade-components/{gc_id}`
-Cáº­p nháº­t thÃ nh pháº§n Ä‘iá»ƒm.
-
-**Body:** Táº¥t cáº£ optional:
-```json
-{
-  "component_name": "Kiá»ƒm tra 15 phÃºt",
-  "weight_percent": 15,
-  "min_count": 3,
-  "is_active": true
-}
-```
-
----
-
-## 10. Grading â€“ Student Grades
-
-> **Äiá»u kiá»‡n trÆ°á»›c:** Pháº£i cÃ³ `class_subject_id` vÃ  `grade_component_id` tÆ°Æ¡ng á»©ng.
-
-### POST `/grading/grades`
-Nháº­p Ä‘iá»ƒm cho 1 há»c sinh.
-
-**Body (required: `*`):**
-```json
-{
-  "student_id": 1,                   // * FK â†’ students.id
-  "class_subject_id": 3,             // * FK â†’ class_subjects.id
-  "grade_component_id": 2,           // * FK â†’ grade_components.id
-  "score": 8.5,                      // * 0â€“10 (decimal)
-  "exam_date": "2024-11-10",         // optional
-  "entered_by": 4                    // optional â€“ ID giÃ¡o viÃªn nháº­p Ä‘iá»ƒm
-}
-```
-
-> **Logic:** KhÃ´ng cho phÃ©p nháº­p trÃ¹ng `(student_id, class_subject_id, grade_component_id)`.
-
----
-
-### POST `/grading/grades/bulk`
-Nháº­p Ä‘iá»ƒm hÃ ng loáº¡t (nhiá»u há»c sinh, cÃ¹ng 1 cá»™t Ä‘iá»ƒm).
-
-**Body (required: `*`):**
-```json
-{
-  "class_subject_id": 3,             // *
-  "grade_component_id": 2,           // *
-  "exam_date": "2024-11-10",         // optional
-  "entered_by": 4,                   // optional
-  "grades": [                        // * danh sÃ¡ch Ä‘iá»ƒm
-    { "student_id": 1, "score": 8.5 },
-    { "student_id": 2, "score": 7.0 },
-    { "student_id": 3, "score": 9.0 }
-  ]
-}
-```
-
-> **Logic BE:** Dùng UPSERT (insert nếu chưa có, update nếu đã có). Bọc trong 1 Transaction. Trả về chi tiết từng dòng thành công/thất bại.
-
----
-
-### GET `/grading/grades/{grade_id}`
-Chi tiáº¿t 1 báº£n ghi Ä‘iá»ƒm.
-
----
-
-### PATCH `/grading/grades/{grade_id}`
-Sá»­a Ä‘iá»ƒm (báº¯t buá»™c cÃ³ lÃ½ do â€“ ghi audit log tá»± Ä‘á»™ng).
-
-**Body (required: `*`):**
-```json
-{
-  "score": 9.0,                      // * 0â€“10
-  "reason": "Cháº¥m sai, Ä‘Ã£ phÃºc tra láº¡i",  // * báº¯t buá»™c, max 300
-  "modified_by": 4                   // optional â€“ ID giÃ¡o viÃªn sá»­a
-}
-```
-
-> **Logic:** Má»—i láº§n sá»­a táº¡o 1 báº£n ghi `GradeAuditLog` lÆ°u Ä‘iá»ƒm cÅ©, Ä‘iá»ƒm má»›i, lÃ½ do.
-
----
-
-### GET `/grading/grades/{grade_id}/audit-logs`
-Lá»‹ch sá»­ thay Ä‘á»•i Ä‘iá»ƒm cá»§a 1 báº£n ghi.
-
----
-
-### GET `/grading/class-subjects/{cs_id}/grades`
-Táº¥t cáº£ Ä‘iá»ƒm trong 1 class-subject.
-
-**Query params:**
-| Param | Type | MÃ´ táº£ |
-|-------|------|-------|
-| `grade_component_id` | int | Lá»c theo cá»™t Ä‘iá»ƒm |
-| `page` | int â‰¥ 1 | Máº·c Ä‘á»‹nh: 1 |
-| `page_size` | int 1â€“500 | Máº·c Ä‘á»‹nh: 100 |
-
----
-
-## 11. Grading â€“ Reports & Statistics
-
-### GET `/grading/students/{student_id}/report`
-BÃ¡o cÃ¡o Ä‘iá»ƒm há»c sinh theo há»c ká»³.
-
-**Query params:**
-| Param | Type | MÃ´ táº£ |
-|-------|------|-------|
-| `semester` | int 1â€“2 | Lá»c theo há»c ká»³ |
-| `academic_year` | string | VD: `"2024-2025"` |
-
-**Response data:**
-```json
-{
-  "student_id": 1,
-  "student_code": "Stud2603001",
-  "full_name": "Nguyen Van An",
-  "semester": 1,
-  "academic_year": "2025-2026",
-  "subjects": [
-    {
-      "class_subject_id": 3,
-      "subject_name": "IELTS",
-      "classroom_name": "IELTS Basic T2T4",
-      "components": [...],
-      "semester_average": 8.1
-    }
-  ],
-  "overall_average": 8.1,
-  "overall_rank": "Gioi"
-}
-```
-
----
-
-### GET `/grading/class-subjects/{cs_id}/statistics`
-Thá»‘ng kÃª Ä‘iá»ƒm cá»§a cáº£ lá»›p cho 1 mÃ´n há»c.
-
-**Response data:**
-```json
-{
-  "class_subject_id": 3,
-  "classroom_name": "IELTS Basic T2T4",
-  "subject_name": "IELTS",
-  "semester": 1,
-  "academic_year": "2025-2026",
-  "total_students": 20,
-  "graded_students": 18,
-  "avg_score": 7.5,
-  "max_score": 10.0,
-  "min_score": 3.5,
-  "rank_distribution": {
-    "Gioi": 5,
-    "Kha": 8,
-    "TrungBinh": 4,
-    "Yeu": 1
+  "data": {
+    "status": "healthy",
+    "database": "primary (MSSQL)"
   }
 }
 ```
 
 ---
 
-## 12. Salary â€“ Salary Grades
+## 2. Auth
 
-> **Salary Grade** = Ngáº¡ch lÆ°Æ¡ng, Ä‘á»‹nh nghÄ©a má»©c lÆ°Æ¡ng cÆ¡ báº£n vÃ  Ä‘Æ¡n giÃ¡ tiáº¿t dáº¡y theo trÃ¬nh Ä‘á»™ + thÃ¢m niÃªn.
+Base path: `/api/v1/auth`
 
-### POST `/salary/grades`
-Táº¡o ngáº¡ch lÆ°Æ¡ng.
+### POST `/login`
+Login with email and password.
 
-**Body (required: `*`):**
+**Request:**
 ```json
 {
-  "grade_code": "THAC_SI_3_6NAM",    // * unique, max 30
-  "qualification_level": "thac_si",  // * enum QualificationLevel
-  "experience_tier": "3_to_6y",      // * enum ExperienceTier
-  "base_salary": 8500000,            // * VNÄ/thÃ¡ng, â‰¥ 0
-  "hourly_rate": 85000,              // * VNÄ/tiáº¿t, â‰¥ 0
-  "effective_from": "2024-01-01",    // * YYYY-MM-DD
-  "effective_to": null,              // optional
-  "description": "..."               // optional, max 300
+  "email": "doanh.nguyen@eiu.edu.vn",
+  "password": "yourpassword"
+}
+```
+
+**Response (200 - Success):**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "Login success",
+  "data": {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "token_type": "bearer",
+    "expires_in": 3600,
+    "role": "teacher",
+    "user_id": 2,
+    "teacher_id": 4
+  },
+  "errors": null
+}
+```
+
+**Response (401 - Invalid Credentials):**
+```json
+{
+  "code": 401,
+  "message": "Invalid Credentials",
+  "detail": "The provided username or password is incorrect",
+  "data": null,
+  "errors": null
+}
+```
+
+**Response (401 - Account Disabled):**
+```json
+{
+  "code": 401,
+  "message": "Account Disabled",
+  "detail": "Your account has been disabled. Please contact administrator.",
+  "data": null,
+  "errors": null
 }
 ```
 
 ---
 
-### GET `/salary/grades`
-Danh sÃ¡ch ngáº¡ch lÆ°Æ¡ng.
+### POST `/refresh`
+Refresh access token using refresh token.
 
-**Query params:** `page`, `page_size`, `active_only` (default: `true`).
-
----
-
-### GET `/salary/grades/{grade_code}`
-Chi tiáº¿t ngáº¡ch lÆ°Æ¡ng.
-
----
-
-### PATCH `/salary/grades/{grade_code}`
-Cáº­p nháº­t ngáº¡ch lÆ°Æ¡ng.
-
-**Body:** Táº¥t cáº£ optional:
+**Request:**
 ```json
 {
-  "base_salary": 9000000,
-  "hourly_rate": 90000,
-  "effective_to": "2026-12-31",
-  "description": "...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Response (200 - Success):**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "Token refreshed",
+  "data": {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "token_type": "bearer",
+    "expires_in": 3600,
+    "role": "teacher",
+    "user_id": 2,
+    "teacher_id": 4
+  },
+  "errors": null
+}
+```
+
+**Response (401 - Token Invalid):**
+```json
+{
+  "code": 401,
+  "message": "Token Invalid",
+  "detail": "Invalid or malformed token",
+  "data": null,
+  "errors": null
+}
+```
+
+**Response (401 - Token Expired):**
+```json
+{
+  "code": 401,
+  "message": "Token Expired",
+  "detail": "Token has expired. Please login again.",
+  "data": null,
+  "errors": null
+}
+```
+
+**Response (401 - Token Blacklisted):**
+```json
+{
+  "code": 401,
+  "message": "Token Blacklisted",
+  "detail": "This token has been revoked. Please login again.",
+  "data": null,
+  "errors": null
+}
+```
+
+---
+
+### POST `/logout`
+Logout and blacklist the token.
+
+**Request:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "refresh"
+}
+```
+
+**Response (200 - Success):**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "Logged out successfully",
+  "data": null,
+  "errors": null
+}
+```
+
+---
+
+### POST `/forgot-password`
+Request password reset via email.
+
+**Request:**
+```json
+{
+  "email": "doanh.nguyen@eiu.edu.vn"
+}
+```
+
+**Response (200 - Always returned for security):**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "Nếu email tồn tại, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu.",
+  "data": {
+    "message": "Nếu email tồn tại, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu."
+  },
+  "errors": null
+}
+```
+
+---
+
+### POST `/reset-password`
+Reset password with token (token expires in 30 minutes).
+
+**Request:**
+```json
+{
+  "token": "abc123...",
+  "new_password": "newpassword123"
+}
+```
+
+**Response (200 - Success):**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "Đặt lại mật khẩu thành công",
+  "data": {
+    "message": "Đặt lại mật khẩu thành công"
+  },
+  "errors": null
+}
+```
+
+**Response (422 - Validation Error):**
+```json
+{
+  "code": 422,
+  "message": "Validation Error",
+  "detail": "Token không hợp lệ hoặc đã hết hạn",
+  "data": null,
+  "errors": null
+}
+```
+
+**Response (422 - Password too short):**
+```json
+{
+  "code": 422,
+  "message": "Validation Error",
+  "detail": "Mật khẩu phải có ít nhất 6 ký tự",
+  "data": null,
+  "errors": null
+}
+```
+
+---
+
+### POST `/change-password` (auth required)
+Change password when logged in.
+
+**Request:**
+```json
+{
+  "old_password": "oldpassword123",
+  "new_password": "newpassword123"
+}
+```
+
+**Response (200 - Success):**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "Đổi mật khẩu thành công",
+  "data": null,
+  "errors": null
+}
+```
+
+**Response (401 - Wrong old password):**
+```json
+{
+  "code": 401,
+  "message": "Invalid Credentials",
+  "detail": "Mật khẩu cũ không đúng",
+  "data": null,
+  "errors": null
+}
+```
+
+**Response (422 - Password too short):**
+```json
+{
+  "code": 422,
+  "message": "Validation Error",
+  "detail": "Mật khẩu phải có ít nhất 6 ký tự",
+  "data": null,
+  "errors": null
+}
+```
+
+---
+
+### POST `/users` (admin)
+Create a new user account.
+
+**Request:**
+```json
+{
+  "username": "doanh.nguyen@eiu.edu.vn",
+  "password": "password123",
+  "role": "teacher",
+  "teacher_id": 4
+}
+```
+
+**Response (201 - Created):**
+```json
+{
+  "code": 201,
+  "message": "Created",
+  "detail": "User created successfully",
+  "data": {
+    "id": 5,
+    "username": "doanh.nguyen@eiu.edu.vn",
+    "role": "teacher",
+    "teacher_id": 4,
+    "is_active": true,
+    "last_login_at": null
+  },
+  "errors": null
+}
+```
+
+**Response (409 - Already Exists):**
+```json
+{
+  "code": 409,
+  "message": "Conflict",
+  "detail": "User already exists",
+  "data": null,
+  "errors": null
+}
+```
+
+**Response (422 - Validation Error):**
+```json
+{
+  "code": 422,
+  "message": "Validation Error",
+  "detail": "teacher_id is required for teacher role",
+  "data": null,
+  "errors": null
+}
+```
+
+---
+
+### GET `/users` (admin)
+List users with pagination and filters.
+
+**Query params:**
+- `page` - Page number (default: 1)
+- `page_size` - Items per page (default: 20)
+- `role` - Filter by role (admin, teacher, accountant, student)
+- `is_active` - Filter by active status (true/false)
+
+**Response (200 - Success):**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "Users retrieved",
+  "data": {
+    "items": [
+      {
+        "id": 1,
+        "username": "admin@eiu.edu.vn",
+        "role": "admin",
+        "teacher_id": null,
+        "is_active": true,
+        "last_login_at": "2026-03-15T10:00:00"
+      }
+    ],
+    "total": 10,
+    "page": 1,
+    "page_size": 20,
+    "total_pages": 1
+  },
+  "errors": null
+}
+```
+
+---
+
+### GET `/users/{user_id}` (admin)
+Get user details.
+
+**Response (200 - Success):**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "User retrieved",
+  "data": {
+    "id": 2,
+    "username": "doanh.nguyen@eiu.edu.vn",
+    "role": "teacher",
+    "teacher_id": 4,
+    "is_active": true,
+    "last_login_at": "2026-03-15T10:00:00"
+  },
+  "errors": null
+}
+```
+
+**Response (404 - Not Found):**
+```json
+{
+  "code": 404,
+  "message": "Not Found",
+  "detail": "User not found",
+  "data": null,
+  "errors": null
+}
+```
+
+---
+
+### PATCH `/users/{user_id}` (admin)
+Update user.
+
+**Request:**
+```json
+{
+  "role": "accountant",
   "is_active": false
 }
 ```
 
----
-
-## 13. Salary â€“ Bonus Policies
-
-> **Bonus Policy** = ChÃ­nh sÃ¡ch thÆ°á»Ÿng tÃ¡i sá»­ dá»¥ng (thÆ°á»Ÿng thÃ¢m niÃªn, thÆ°á»Ÿng GVCN...).
-
-### POST `/salary/bonus-policies`
-Táº¡o chÃ­nh sÃ¡ch thÆ°á»Ÿng.
-
-**Body (required: `*`):**
+**Response (200 - Success):**
 ```json
 {
-  "policy_code": "THUONG_THAM_NIEN_3NAM",     // * unique, max 30
-  "policy_name": "ThÆ°á»Ÿng Ä‘áº¡t má»‘c 3 nÄƒm",      // * max 200
-  "bonus_type": "fixed",                        // optional, default: "fixed"
-  "bonus_value": 500000,                        // * â‰¥ 0
-  "condition_description": "..."               // optional, max 500
-}
-```
-
----
-
-### GET `/salary/bonus-policies`
-Danh sÃ¡ch chÃ­nh sÃ¡ch thÆ°á»Ÿng.
-
-**Query params:** `page`, `page_size`, `active_only` (default: `true`).
-
----
-
-### GET `/salary/bonus-policies/{policy_code}`
-Chi tiáº¿t chÃ­nh sÃ¡ch thÆ°á»Ÿng.
-
----
-
-### PATCH `/salary/bonus-policies/{policy_code}`
-Cáº­p nháº­t chÃ­nh sÃ¡ch thÆ°á»Ÿng.
-
-**Body:** Táº¥t cáº£ optional:
-```json
-{
-  "policy_name": "...",
-  "bonus_type": "percentage",
-  "bonus_value": 10,
-  "condition_description": "...",
-  "is_active": true
-}
-```
-
----
-
-## 14. Salary â€“ Payrolls
-
-> **Payroll** = Báº£ng lÆ°Æ¡ng thÃ¡ng cá»§a 1 giÃ¡o viÃªn. Tráº£i qua 3 tráº¡ng thÃ¡i: `draft â†’ confirmed â†’ paid`.
-
-### POST `/salary/payrolls`
-Táº¡o báº£ng lÆ°Æ¡ng thÃ¡ng.
-
-**FE gửi (required: `*`):**
-```json
-{
-  "teacher_id": 1,                   // * FK â†’ teachers.id
-  "salary_grade_id": 2,              // * FK â†’ salary_grades.id
-  "payroll_month": "2024-09-01",     // * lÆ°u ngÃ y 1 cá»§a thÃ¡ng, YYYY-MM-DD
-  "work_days_standard": 22,          // optional, default: 22
-  "work_days_actual": 21,            // optional, default: 0
-  "teaching_hours_standard": 80,     // optional, default: 0
-  "teaching_hours_actual": 90,       // optional, default: 0
-  "base_salary": 8500000,            // optional, default: 0
-  "teaching_allowance": 850000,      // optional, default: 0
-  "deductions": 0,                   // optional, default: 0
-  "notes": "...",                    // optional, max 500
-  "bonus_details": [                 // optional, danh sÃ¡ch khoáº£n thÆ°á»Ÿng Ä‘Ã­nh kÃ¨m
-    {
-      "bonus_policy_id": 1,          // * FK â†’ bonus_policies.id
-      "amount": 500000,              // * â‰¥ 0
-      "note": "ThÆ°á»Ÿng thÃ¢m niÃªn"     // optional, max 300
-    }
-  ]
-}
-```
-
-> **Logic:** `net_salary = base_salary + teaching_allowance + total_bonus - deductions`. Tá»± tÃ­nh khi táº¡o/cáº­p nháº­t.
-
----
-
-### GET `/salary/payrolls`
-Danh sÃ¡ch báº£ng lÆ°Æ¡ng (cÃ³ lá»c).
-
-**Query params:**
-| Param | Type | MÃ´ táº£ |
-|-------|------|-------|
-| `teacher_id` | int | Lá»c theo giÃ¡o viÃªn |
-| `status` | enum | `draft` \| `confirmed` \| `paid` |
-| `month_from` | YYYY-MM-DD | Lá»c tá»« thÃ¡ng |
-| `month_to` | YYYY-MM-DD | Lá»c Ä‘áº¿n thÃ¡ng |
-| `page` | int â‰¥ 1 | Máº·c Ä‘á»‹nh: 1 |
-| `page_size` | int 1â€“100 | Máº·c Ä‘á»‹nh: 20 |
-
----
-
-### GET `/salary/payrolls/{payroll_id}`
-Chi tiáº¿t báº£ng lÆ°Æ¡ng (bao gá»“m danh sÃ¡ch `bonus_details`).
-
----
-
-### PATCH `/salary/payrolls/{payroll_id}`
-Cáº­p nháº­t báº£ng lÆ°Æ¡ng (chá»‰ cho phÃ©p khi status = `draft`).
-
-**Body:** Táº¥t cáº£ optional:
-```json
-{
-  "work_days_actual": 20,
-  "teaching_hours_actual": 85,
-  "teaching_allowance": 800000,
-  "deductions": 100000,
-  "notes": "..."
-}
-```
-
----
-
-### PATCH `/salary/payrolls/{payroll_id}/status`
-Duyá»‡t / thanh toÃ¡n báº£ng lÆ°Æ¡ng.
-
-**Body:**
-```json
-{
-  "new_status": "confirmed",         // * enum PayrollStatus
-  "confirmed_by": 5,                 // optional â€“ ID ngÆ°á»i duyá»‡t
-  "notes": "ÄÃ£ kiá»ƒm tra, duyá»‡t chi"  // optional, max 500
-}
-```
-
-**Luá»“ng chuyá»ƒn tráº¡ng thÃ¡i há»£p lá»‡:**
-```
-draft â†’ confirmed
-confirmed â†’ paid
-paid â†’ (terminal)
-```
-
----
-
-### POST `/salary/payrolls/{payroll_id}/bonuses`
-ThÃªm khoáº£n thÆ°á»Ÿng vÃ o báº£ng lÆ°Æ¡ng (chá»‰ khi chÆ°a `paid`).
-
-**Body:**
-```json
-{
-  "bonus_policy_id": 1,              // * FK â†’ bonus_policies.id
-  "amount": 500000,                  // * â‰¥ 0
-  "note": "ThÆ°á»Ÿng GVCN"             // optional, max 300
-}
-```
-
-> **Logic:** Sau khi thÃªm bonus, `total_bonus` vÃ  `net_salary` Ä‘Æ°á»£c tÃ­nh láº¡i tá»± Ä‘á»™ng.
-
----
-
-## 16. Enums Reference
-
-### StudentStatus
-| Value | Ã nghÄ©a |
-|-------|---------|
-| `active` | Äang há»c |
-| `preserved` | Báº£o lÆ°u |
-| `suspended` | ÄÃ¬nh chá»‰ |
-| `graduated` | ÄÃ£ tá»‘t nghiá»‡p |
-
-### TeacherStatus
-| Value | Ã nghÄ©a |
-|-------|---------|
-| `active` | Äang cÃ´ng tÃ¡c |
-| `on_leave` | Äang nghá»‰ phÃ©p |
-| `resigned` | ÄÃ£ nghá»‰ viá»‡c |
-| `retired` | ÄÃ£ vá» hÆ°u |
-
-### ClassType
-| Value | Ã nghÄ©a |
-|-------|---------|
-| `standard` | Lá»›p thÆ°á»ng |
-| `specialized` | Lá»›p chuyÃªn |
-| `advanced` | Lá»›p nÃ¢ng cao |
-
-### EnrollmentType
-| Value | Ã nghÄ©a |
-|-------|---------|
-| `primary` | Lá»›p chÃ­nh (má»—i HS chá»‰ cÃ³ 1) |
-| `secondary` | Lá»›p phá»¥ / cÃ¢u láº¡c bá»™ |
-
-### EnrollmentStatus
-| Value | Ã nghÄ©a |
-|-------|---------|
-| `active` | Äang há»c |
-| `transferred` | ÄÃ£ chuyá»ƒn lá»›p |
-| `withdrawn` | ÄÃ£ rÃºt khá»i lá»›p |
-| `completed` | HoÃ n thÃ nh |
-
-### SubjectType
-| Value | Ã nghÄ©a |
-|-------|---------|
-| `standard` | MÃ´n báº¯t buá»™c |
-| `elective` | MÃ´n tá»± chá»n |
-| `extra` | MÃ´n ngoáº¡i khÃ³a |
-
-### AcademicRank (xáº¿p loáº¡i)
-| Value | Äiá»ƒm TB |
-|-------|---------|
-| `Gioi` | â‰¥ 8.0 |
-| `Kha` | 6.5â€“7.9 |
-| `TrungBinh` | 5.0â€“6.4 |
-| `Yeu` | < 5.0 |
-
-### QualificationLevel
-`dai_hoc` \| `thac_si` \| `tien_si` \| `giao_su`
-
-### ExperienceTier
-`under_3y` \| `3_to_6y` \| `6_to_10y` \| `over_10y`
-
-### BonusType
-`fixed` \| `percentage`
-
-### PayrollStatus
-`draft` \| `confirmed` \| `paid`
-
----
-
-## 16. Business Logic & Luá»“ng xá»­ lÃ½
-
-### Luá»“ng hoÃ n chá»‰nh: Nháº­p Ä‘iá»ƒm cho 1 lá»›p
-
-```
-1. Táº¡o Teacher          POST /teachers
-2. Táº¡o Classroom        POST /classrooms
-3. Enroll Students      POST /classrooms/{class_code}/enrollments  (má»—i HS)
-4. Táº¡o Subject          POST /grading/subjects
-5. PhÃ¢n cÃ´ng dáº¡y        POST /grading/class-subjects
-      â””â”€ classroom_id + subject_id + teacher_id + semester + academic_year
-6. Cáº¥u hÃ¬nh thÃ nh pháº§n Ä‘iá»ƒm
-                        POST /grading/grade-components  (má»—i cá»™t: miá»‡ng, 15p, 1tiáº¿t, HK...)
-7. Nháº­p Ä‘iá»ƒm            POST /grading/grades  hoáº·c  POST /grading/grades/bulk
-8. Xem bÃ¡o cÃ¡o há»c sinh GET /grading/students/{student_id}/report
-9. Xem thá»‘ng kÃª lá»›p     GET /grading/class-subjects/{cs_id}/statistics
-```
-
-### Luá»“ng hoÃ n chá»‰nh: Xá»­ lÃ½ lÆ°Æ¡ng giÃ¡o viÃªn
-
-```
-1. Táº¡o SalaryGrade      POST /salary/grades
-      â””â”€ qualification_level + experience_tier + base_salary + hourly_rate
-2. Táº¡o BonusPolicy      POST /salary/bonus-policies  (náº¿u cÃ³ thÆ°á»Ÿng)
-3. Táº¡o Payroll thÃ¡ng    POST /salary/payrolls
-      â””â”€ teacher_id + salary_grade_id + payroll_month + giá» dáº¡y + kháº¥u trá»« + bonus
-4. Duyá»‡t payroll        PATCH /salary/payrolls/{id}/status  { "new_status": "confirmed" }
-5. Thanh toÃ¡n           PATCH /salary/payrolls/{id}/status  { "new_status": "paid" }
-```
-
-### RÃ ng buá»™c quan trá»ng
-
-| RÃ ng buá»™c | MÃ´ táº£ |
-|-----------|-------|
-| `student_code`, `teacher_code`, `class_code`, `subject_code` | Unique trong toÃ n há»‡ thá»‘ng |
-| `email`, `national_id` (student/teacher) | Unique náº¿u cÃ³ giÃ¡ trá»‹ |
-| Enrollment PRIMARY | Má»—i há»c sinh chá»‰ Ä‘Æ°á»£c cÃ³ 1 lá»›p primary active táº¡i 1 thá»i Ä‘iá»ƒm |
-| Enrollment capacity | KhÃ´ng thá»ƒ enroll khi `current_enrollment >= max_capacity` |
-| Grade unique | `(student_id, class_subject_id, grade_component_id)` unique |
-| Grade audit | Má»i thao tÃ¡c sá»­a Ä‘iá»ƒm Ä‘á»u báº¯t buá»™c `reason` vÃ  táº¡o audit log |
-| Payroll editable | Chá»‰ cáº­p nháº­t/thÃªm bonus khi `status != paid` |
-| Status transition | Má»i chuyá»ƒn tráº¡ng thÃ¡i Ä‘á»u cÃ³ whitelist há»£p lá»‡, vi pháº¡m tráº£ lá»—i |
-| Soft-delete | KhÃ´ng xÃ³a cá»©ng báº¥t ká»³ record nÃ o â€“ chá»‰ set `is_active = false` |
-
-
----
-
-## 17. Teacher Portal (Phase 1)
-
-**Auth:** Các endpoint dưới đây yêu cầu header `Authorization: Bearer <token>` và role `teacher`. 
-
-> Namespace: `/api/v1/teacher/*`
->
-
-### GET `/teacher/dashboard`
-Tổng quan cho giáo viên.
-
-**Response data:**
-```json
-{
-  "assignments_count": 4,
-  "classrooms_count": 3,
-  "subjects_count": 2,
-  "upcoming_lessons": [
-    {
-      "id": 9001,
-      "start": "2026-03-11T08:00:00",
-      "end": "2026-03-11T09:30:00",
-      "class_name": "Lớp 10A1",
-      "subject_name": "Toán",
-      "room_number": "A-302"
-    }
-  ]
-}
-```
-
----
-
-### GET `/teacher/assignments`
-Danh sách lớp-môn giáo viên phụ trách.
-
-**Query params:**
-| Param | Type | Mô tả |
-|-------|------|-------|
-| `academic_year` | string | VD: `2025-2026` |
-| `semester` | int | 1 hoặc 2 |
-
-**Response data:**
-```json
-{
-  "items": [
-    {
-      "class_subject_id": 501,
-      "classroom_id": 18,
-      "class_code": "10A1-2025",
-      "class_name": "Lớp 10A1",
-      "subject_id": 7,
-      "subject_code": "TOAN",
-      "subject_name": "Toán",
-      "semester": 2,
-      "academic_year": "2025-2026",
-      "student_count": 34
-    }
-  ]
-}
-```
-
----
-
-### GET `/teacher/classrooms/{classroom_id}/students`
-Danh sách học sinh tối giản để render grid.
-
-**Response data:**
-```json
-{
-  "items": [
-    { "student_id": 301, "student_code": "HS0301", "full_name": "Nguyễn An" }
-  ]
-}
-```
-
----
-
-### GET `/teacher/gradebook/matrix`
-Bảng điểm dạng ma trận (1 call).
-
-**Query params:**
-| Param | Type | Mô tả |
-|-------|------|-------|
-| `class_subject_id` | int | Bắt buộc |
-
-**Response data:**
-```json
-{
-  "class_subject_id": 501,
-  "rounding": { "scale": "standard", "precision": 1, "rule": "round_half_up" },
-  "components": [
-    { "grade_component_id": 1001, "name": "15 phút", "weight_percent": 10, "min_count": 2 }
-  ],
-  "students": [
-    { "student_id": 301, "student_code": "HS0301", "full_name": "Nguyễn An" }
-  ],
-  "scores": [
-    { "student_id": 301, "grade_component_id": 1001, "score": 8.5, "exam_date": "2026-03-10" }
-  ],
-  "averages": [
-    { "student_id": 301, "average_score": 8.7, "rank": "Gioi" }
-  ]
-}
-```
-
----
-
-### PATCH `/teacher/gradebook/entries`
-Ghi điểm hàng loạt (batch upsert).
-
-**Body:**
-```json
-{
-  "class_subject_id": 501,
-  "items": [
-    { "student_id": 301, "grade_component_id": 1001, "score": 9.0, "exam_date": "2026-03-10" }
-  ]
-}
-```
-
-**Response data:**
-```json
-{ "created": 1, "updated": 0 }
-```
-
----
-
-### GET `/teacher/attendance/matrix`
-Bảng điểm danh dạng ma trận (1 call).
-
-**Query params:**
-| Param | Type | Mô tả |
-|-------|------|-------|
-| `classroom_id` | int | Bắt buộc |
-| `date_from` | date | YYYY-MM-DD |
-| `date_to` | date | YYYY-MM-DD |
-
-**Response data:**
-```json
-{
-  "classroom_id": 18,
-  "date_from": "2026-03-01",
-  "date_to": "2026-03-31",
-  "cycle_order": ["present", "late", "absent_excused", "absent_unexcused"],
-  "students": [
-    { "student_id": 301, "student_code": "HS0301", "full_name": "Nguyễn An", "absence_rate": 0.12 }
-  ],
-  "records": [
-    { "student_id": 301, "date": "2026-03-03", "status": "present", "note": "" }
-  ]
-}
-```
-
----
-
-### PATCH `/teacher/attendance/entries`
-Cập nhật điểm danh hàng loạt.
-
-**Body:**
-```json
-{
-  "classroom_id": 18,
-  "items": [
-    { "student_id": 301, "date": "2026-03-03", "status": "absent_unexcused", "note": "No show" }
-  ]
-}
-```
-
-**Response data:**
-```json
-{ "created": 0, "updated": 1 }
-```
-
----
-
-### GET `/teacher/timetable`
-Lịch dạy tuần/tháng.
-
-**Query params:**
-| Param | Type | Mô tả |
-|-------|------|-------|
-| `from` | datetime | ISO 8601 |
-| `to` | datetime | ISO 8601 |
-| `view` | string | `week` hoặc `month` |
-
-**Response data:**
-```json
-{
-  "items": [
-    {
-      "id": 9001,
-      "start": "2026-03-11T08:00:00",
-      "end": "2026-03-11T09:30:00",
-      "classroom_id": 18,
-      "class_name": "Lớp 10A1",
-      "subject_name": "Toán",
-      "room_number": "A-302"
-    }
-  ]
-}
-```
-
-
----
-
-## 18. Auth
-
-> **Important:** Hệ thống yêu cầu tài khoản admin đầu tiên để hoạt động. Có 2 cách thiết lập:
-
-### Cách 1: Sử dụng CLI (Khuyến nghị)
-```bash
-python -m app.scripts.create_admin --username admin --password your_secure_password
-```
-
-### Cách 2: Sử dụng API Bootstrap
-Xem mục **Bootstrap Endpoints** bên dưới.
-
----
-
-## Bootstrap Endpoints
-
-> Dùng để tạo admin user đầu tiên khi hệ thống chưa có user nào.
-
-| Method | Path | Mô tả | Quyền |
-|--------|------|-------|-------|
-| GET | `/auth/init/status` | Kiểm tra hệ thống đã init chưa | Public |
-| POST | `/auth/init/admin` | Tạo admin user đầu tiên | Public (cần secret key) |
-
----
-
-### GET `/auth/init/status`
-Kiểm tra xem hệ thống đã có admin chưa.
-
-**Response:**
-```json
-{
-  "initialized": true,
-  "message": "System is ready"
-}
-```
-
----
-
-### POST `/auth/init/admin`
-Tạo admin user đầu tiên.
-
-**Headers:**
-```
-Content-Type: application/json
-```
-
-**Body:**
-```json
-{
-  "secret": "ems-bootstrap-secret-change-me",
-  "username": "admin",
-  "password": "admin123"
-}
-```
-
-**Response:**
-```json
-{
-  "code": 201,
+  "code": 200,
   "message": "Success",
-  "detail": "Admin user created successfully",
+  "detail": "User updated successfully",
   "data": {
-    "id": 1,
-    "username": "admin",
-    "role": "admin",
-    "message": "Admin user created successfully"
-  }
-}
-```
-
-> **Lưu ý:** 
-> - Endpoint này chỉ hoạt động khi chưa có user admin nào trong hệ thống.
-> - Cần đặt biến môi trường `BOOTSTRAP_SECRET` trong file `.env` để bảo mật.
-> - Sau khi tạo admin thành công, nên vô hiệu hóa hoặc xóa endpoint này.
-
----
-
-**ENV:**
-- `BOOTSTRAP_SECRET` - Secret key cho bootstrap (default: "ems-bootstrap-secret-key-change-me")
-
----
-
-### POST `/auth/login`
-Đăng nhập lấy JWT.
-
-**Body:**
-```json
-{
-  "username": "admin",
-  "password": "secret"
-}
-```
-
-**Response data:**
-```json
-{
-  "access_token": "jwt...",
-  "refresh_token": "jwt_refresh...",
-  "token_type": "bearer",
-  "expires_in": 3600,
-  "role": "admin",
-  "user_id": 1,
-  "teacher_id": 45
+    "id": 2,
+    "username": "doanh.nguyen@eiu.edu.vn",
+    "role": "accountant",
+    "teacher_id": 4,
+    "is_active": false,
+    "last_login_at": "2026-03-15T10:00:00"
+  },
+  "errors": null
 }
 ```
 
 ---
 
-### POST `/auth/refresh`
-Làm mới access token từ refresh token.
+### POST `/teachers/{teacher_id}/account` (admin)
+Create account for a teacher.
 
-**Body:**
-```json
-{ "refresh_token": "jwt_refresh..." }
-```
-
-**Response:** Giống `/auth/login` (access + refresh mới).
-
----
-
-### POST `/auth/logout`
-Logout (blacklist token).
-
-**Body:**
-```json
-{ "token": "jwt...", "token_type": "access" }
-```
-
----
-
-### POST `/auth/users` (admin)
-Tạo user.
-
-**Body:**
-```json
-{
-  "username": "teacher01",
-  "password": "secret123",
-  "role": "teacher",
-  "teacher_id": 45
-}
-```
-
----
-
-### POST `/auth/teachers/{teacher_id}/account` (admin)
-Tạo tài khoản cho Giáo viên.
-
-**Path params:** `teacher_id` - ID của giáo viên
-
-**Body:**
+**Request:**
 ```json
 {
   "send_email": true
 }
 ```
 
-**Response:**
+**Response (201 - Created):**
 ```json
 {
   "code": 201,
-  "message": "Success",
+  "message": "Created",
   "detail": "Tài khoản Giáo viên đã được tạo",
   "data": {
-    "user_id": 2,
-    "teacher_id": 45,
-    "teacher_code": "Tchr2603001",
-    "teacher_name": "Nguyễn Văn A",
-    "email": "nguyenvana@school.edu.vn",
-    "username": "nguyenvana",
-    "temp_password": "aB3xK9mNp",
+    "user_id": 3,
+    "teacher_id": 5,
+    "teacher_code": "TCHR001",
+    "teacher_name": "Nguyen Van A",
+    "email": "nguyenvana@eiu.edu.vn",
+    "username": "nguyenvana@eiu.edu.vn",
+    "temp_password": "a1b2c3d4",
     "email_sent": true,
     "must_change_password": true
-  }
+  },
+  "errors": null
 }
 ```
 
-> **Quy trình:**
-> 1. Admin gọi API với teacher_id
-> 2. Hệ thống tự tạo username từ email
-> 3. Hệ thống tạo mật khẩu ngẫu nhiên (10 ký tự)
-> 4. Gửi email chứa mật khẩu cho Giáo viên
-> 5. Giáo viên đăng nhập lần đầu và **bắt buộc đổi mật khẩu**
-
-> **Lưu ý:**
-> - Giáo viên phải có email trong hồ sơ
-> - Nếu teacher đã có tài khoản, trả lỗi 409 Conflict
-> - Email chỉ được gửi nếu cấu hình SMTP (xem biến môi trường EMAIL_*)
-
----
-
-### GET `/auth/users` (admin)
-
-### GET `/auth/users` (admin)
-Danh sách user.
-
-**Query params:** `role`, `is_active`, `page`, `page_size`
-
----
-
-### GET `/auth/users/{user_id}` (admin)
-Chi tiết user.
-
----
-
-### POST `/auth/forgot-password` (public)
-Quên mật khẩu - gửi email reset.
-
-**Body:**
+**Response (409 - Already Exists):**
 ```json
 {
-  "email": "nguyenvana@school.edu.vn"
+  "code": 409,
+  "message": "Conflict",
+  "detail": "User already exists",
+  "data": null,
+  "errors": null
 }
 ```
 
-**Response:**
+**Response (404 - Not Found):**
+```json
+{
+  "code": 404,
+  "message": "Not Found",
+  "detail": "Teacher not found",
+  "data": null,
+  "errors": null
+}
+```
+
+---
+
+### DELETE `/users/{user_id}` (admin)
+Permanently delete user.
+
+**Response (200 - Success):**
 ```json
 {
   "code": 200,
   "message": "Success",
-  "detail": "Nếu email tồn tại, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu."
+  "detail": "User deleted successfully",
+  "data": null,
+  "errors": null
 }
 ```
-
-> **Lưu ý:**
-> - Luôn trả về thành công để tránh email enumeration attack
-> - Link reset có hiệu lực trong 30 phút
 
 ---
 
-### POST `/auth/reset-password` (public)
-Đặt lại mật khẩu với token từ email.
+### POST `/users/{user_id}/deactivate` (admin)
+Deactivate user account.
 
-**Body:**
-```json
-{
-  "token": "abc123...",
-  "new_password": "new_secure_password"
-}
-```
-
-**Response:**
+**Response (200 - Success):**
 ```json
 {
   "code": 200,
   "message": "Success",
-  "detail": "Đặt lại mật khẩu thành công"
-}
-```
-
-> **Lưu ý:**
-> - Token có hiệu lực trong 30 phút
-> - Mỗi token chỉ sử dụng được 1 lần
-> - Mật khẩu mới phải có ít nhất 6 ký tự
-
----
-
-### POST `/auth/change-password` (auth required)
-Đổi mật khẩu khi đã đăng nhập.
-
-**Body:**
-```json
-{
-  "old_password": "current_password",
-  "new_password": "new_secure_password"
-}
-```
-
-**Response:**
-```json
-{
-  "code": 200,
-  "message": "Success",
-  "detail": "Đổi mật khẩu thành công"
-}
-```
-
-> **Yêu cầu:** Header Authorization với access token
-
----
-
-### DELETE `/auth/users/{user_id}` (admin)
-Xóa vĩnh viễn tài khoản người dùng (Hard Delete).
-
-**Path params:** `user_id` - ID của user cần xóa
-
-**Response:**
-```json
-{
-  "code": 200,
-  "message": "Success",
-  "detail": "Xóa tài khoản 'username' thành công"
-}
-```
-
-> **Lưu ý:**
-> - Chỉ Admin mới có quyền xóa
-> - Không thể tự xóa chính mình
-> - Dữ liệu sẽ bị xóa vĩnh viễn
-
----
-
-### POST `/auth/users/{user_id}/deactivate` (admin)
-Vô hiệu hóa tài khoản người dùng (Soft Delete).
-
-**Path params:** `user_id` - ID của user cần vô hiệu hóa
-
-**Response:**
-```json
-{
-  "code": 200,
-  "message": "Success",
-  "detail": "Vô hiệu hóa tài khoản thành công",
+  "detail": "User deactivated successfully",
   "data": {
-    "user_id": 2,
-    "username": "teacher01",
+    "id": 2,
+    "username": "doanh.nguyen@eiu.edu.vn",
+    "role": "teacher",
     "is_active": false
-  }
+  },
+  "errors": null
 }
 ```
 
-> **Lưu ý:**
-> - User sẽ không thể đăng nhập
-> - Dữ liệu vẫn được giữ nguyên
-> - Có thể kích hoạt lại sau
-> - Không thể tự vô hiệu hóa chính mình
-
 ---
 
-### POST `/auth/users/{user_id}/reactivate` (admin)
-Kích hoạt lại tài khoản người dùng đã bị vô hiệu hóa.
+### POST `/users/{user_id}/reactivate` (admin)
+Reactivate user account.
 
-**Path params:** `user_id` - ID của user cần kích hoạt lại
-
-**Response:**
+**Response (200 - Success):**
 ```json
 {
   "code": 200,
   "message": "Success",
-  "detail": "Kích hoạt tài khoản thành công",
+  "detail": "User reactivated successfully",
   "data": {
-    "user_id": 2,
-    "username": "teacher01",
+    "id": 2,
+    "username": "doanh.nguyen@eiu.edu.vn",
+    "role": "teacher",
     "is_active": true
+  },
+  "errors": null
+}
+```
+
+---
+
+## 3. Bootstrap
+
+Base path: `/api/v1/auth/init`
+
+### POST `/admin`
+Create first admin user (for system initialization).
+
+**Request:**
+```json
+{
+  "secret": "ems-bootstrap-secret-change-me",
+  "username": "admin@eiu.edu.vn",
+  "password": "yourpassword"
+}
+```
+
+**Response (201 - Created):**
+```json
+{
+  "code": 201,
+  "message": "Created",
+  "detail": "Admin user created successfully",
+  "data": {
+    "id": 1,
+    "username": "admin@eiu.edu.vn",
+    "role": "admin",
+    "message": "Admin user created successfully"
+  },
+  "errors": null
+}
+```
+
+**Response (409 - Already Exists):**
+```json
+{
+  "code": 409,
+  "message": "Conflict",
+  "detail": "Admin user already exists",
+  "data": null,
+  "errors": null
+}
+```
+
+**Response (401 - Invalid Secret):**
+```json
+{
+  "code": 401,
+  "message": "Unauthorized",
+  "detail": "Invalid bootstrap secret",
+  "data": null,
+  "errors": null
+}
+```
+
+---
+
+### GET `/status`
+Check if system is initialized.
+
+**Response (200 - Not Initialized):**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "System not initialized",
+  "data": {
+    "initialized": false
+  },
+  "errors": null
+}
+```
+
+**Response (200 - Already Initialized):**
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "detail": "System already initialized",
+  "data": {
+    "initialized": true
+  },
+  "errors": null
+}
+```
+
+---
+
+## 4. Students
+
+Base path: `/api/v1/students`
+
+### POST `/` (admin)
+Create new student.
+
+### GET `/` (admin)
+List students with pagination and filters.
+
+**Query params:**
+- `search` - Search by code or name
+- `academic_status` - Filter by status
+- `has_enrollment` - Filter enrolled/not enrolled
+- `classroom_id` - Filter by classroom
+- `page`, `page_size` - Pagination
+
+### GET `/{student_code}` (admin)
+Get student details with enrollments.
+
+### PATCH `/{student_code}` (admin)
+Update student profile.
+
+### PATCH `/{student_code}/status` (admin)
+Update academic status.
+
+**Valid transitions:**
+- `active` → `preserved` | `suspended` | `graduated`
+- `preserved` → `active` | `suspended`
+- `suspended` → `active`
+- `graduated` → (terminal)
+
+### DELETE `/{student_code}` (admin)
+Soft-delete student.
+
+---
+
+## 5. Teachers
+
+Base path: `/api/v1/teachers`
+
+### POST `/` (admin)
+Create new teacher.
+
+### GET `/` (admin)
+List teachers with pagination and filters.
+
+**Query params:**
+- `search` - Search by code, name, or email
+- `employment_status` - Filter by status
+- `department` - Filter by department
+- `specialization` - Filter by specialization
+- `page`, `page_size` - Pagination
+
+### GET `/{teacher_code}` (admin)
+Get teacher details with teaching assignments.
+
+### PATCH `/{teacher_code}` (admin)
+Partially update teacher profile.
+
+### PATCH `/{teacher_code}/status` (admin)
+Update employment status.
+
+**Valid transitions:**
+- `active` → `on_leave` | `resigned` | `retired`
+- `on_leave` → `active` | `resigned`
+- `resigned` → (terminal)
+- `retired` → (terminal)
+
+### DELETE `/{teacher_code}` (admin)
+Soft-delete teacher.
+
+---
+
+## 6. Classrooms
+
+Base path: `/api/v1/classrooms`
+
+### POST `/` (admin)
+Create new classroom.
+
+### GET `/` (admin)
+List classrooms with filters.
+
+**Query params:**
+- `search` - Search by code or name
+- `class_type` - Filter by type
+- `academic_year` - Filter by year
+- `grade_level` - Filter by grade (1-13)
+- `homeroom_teacher_id` - Filter by homeroom teacher
+- `has_capacity` - Filter by availability
+- `page`, `page_size` - Pagination
+
+### GET `/{class_code}` (admin)
+Get classroom details.
+
+### PATCH `/{class_code}` (admin)
+Update classroom.
+
+### PATCH `/{class_code}/status` (admin)
+Update classroom status.
+
+### DELETE `/{class_code}` (admin)
+Soft-delete classroom.
+
+### POST `/{class_code}/enrollments` (admin)
+Enroll student in classroom.
+
+### GET `/{class_code}/enrollments` (admin)
+List enrollments in classroom.
+
+### GET `/students/{student_id}/enrollments` (admin)
+Get all enrollments for a student.
+
+### GET `/enrollments/{enrollment_id}` (admin)
+Get enrollment details.
+
+### PATCH `/enrollments/{enrollment_id}` (admin)
+Update enrollment notes.
+
+### PATCH `/enrollments/{enrollment_id}/status` (admin)
+Update enrollment status.
+
+---
+
+## 7. Grading
+
+Base path: `/api/v1/grading`
+
+### Subjects
+
+#### POST `/subjects` (admin|teacher)
+Create subject.
+
+#### GET `/subjects` (admin|teacher)
+List subjects.
+
+#### GET `/subjects/{subject_code}` (admin|teacher)
+Get subject details.
+
+#### PATCH `/subjects/{subject_code}` (admin|teacher)
+Update subject.
+
+### Class Subjects (Assignments)
+
+#### POST `/class-subjects` (admin|teacher)
+Assign subject to class with teacher.
+
+#### GET `/class-subjects` (admin|teacher)
+List class-subject assignments.
+
+**Query params:**
+- `classroom_id`
+- `teacher_id`
+- `academic_year`
+- `semester` (1 or 2)
+
+#### GET `/class-subjects/{cs_id}` (admin|teacher)
+Get class-subject details.
+
+#### PATCH `/class-subjects/{cs_id}` (admin|teacher)
+Update class-subject (assign/change teacher).
+
+### Grade Components
+
+#### POST `/grade-components` (admin|teacher)
+Create grade component (midterm, final, homework...).
+
+#### GET `/grade-components/{class_subject_id}` (admin|teacher)
+List grade components for a class-subject.
+
+#### PATCH `/grade-components/{gc_id}` (admin|teacher)
+Update grade component.
+
+### Student Grades
+
+#### POST `/grades` (admin|teacher)
+Enter grade for one student.
+
+#### POST `/grades/bulk` (admin|teacher)
+Bulk enter grades for multiple students.
+
+#### GET `/grades/{grade_id}` (admin|teacher)
+Get grade details.
+
+#### PATCH `/grades/{grade_id}` (admin|teacher)
+Update grade (requires reason - creates audit log).
+
+#### GET `/grades/{grade_id}/audit-logs` (admin|teacher)
+Get grade change history.
+
+#### GET `/class-subjects/{cs_id}/grade-matrix` (admin|teacher)
+Get full grade matrix for class-subject.
+
+#### GET `/class-subjects/{cs_id}/grades` (admin|teacher)
+List all grades in a class-subject.
+
+### Reports & Statistics
+
+#### GET `/students/{student_id}/report` (admin|teacher)
+Get student semester report.
+
+#### GET `/class-subjects/{cs_id}/statistics` (admin|teacher)
+Get class statistics (grade distribution, averages).
+
+---
+
+## 8. Salary
+
+Base path: `/api/v1/salary`
+
+### Salary Grades
+
+#### POST `/grades` (admin|accountant)
+Create salary grade.
+
+#### GET `/grades` (admin|accountant)
+List salary grades.
+
+#### GET `/grades/{grade_code}` (admin|accountant)
+Get salary grade details.
+
+#### PATCH `/grades/{grade_code}` (admin|accountant)
+Update salary grade.
+
+### Bonus Policies
+
+#### POST `/bonus-policies` (admin|accountant)
+Create bonus policy.
+
+#### GET `/bonus-policies` (admin|accountant)
+List bonus policies.
+
+#### GET `/bonus-policies/{policy_code}` (admin|accountant)
+Get bonus policy details.
+
+#### PATCH `/bonus-policies/{policy_code}` (admin|accountant)
+Update bonus policy.
+
+### Payroll
+
+#### POST `/payrolls` (admin|accountant)
+Create monthly payroll.
+
+#### GET `/payrolls` (admin|accountant)
+List payrolls.
+
+**Query params:**
+- `teacher_id`
+- `status` (draft, confirmed, paid)
+- `month_from`, `month_to`
+- `page`, `page_size`
+
+#### GET `/payrolls/{payroll_id}` (admin|accountant)
+Get payroll details.
+
+#### PATCH `/payrolls/{payroll_id}` (admin|accountant)
+Update payroll (only when not paid).
+
+#### PATCH `/payrolls/{payroll_id}/status` (admin|accountant)
+Update payroll status (draft → confirmed → paid).
+
+#### POST `/payrolls/{payroll_id}/bonuses` (admin|accountant)
+Add bonus to payroll.
+
+---
+
+## 9. Dashboard
+
+Base path: `/api/v1/dashboard`
+
+### GET `/stats` (admin)
+Get dashboard statistics.
+
+**Response:**
+```json
+{
+  "data": {
+    "total_students": 120,
+    "total_teachers": 15,
+    "total_classrooms": 8,
+    "active_students": 110,
+    "active_teachers": 13,
+    "recent_students": [...],
+    "recent_teachers": [...]
   }
 }
 ```
 
 ---
 
-### PATCH `/auth/users/{user_id}` (admin)
-Cập nhật user.
+## 10. Lookups
 
-**Body:**
-```json
-{ "password": "newpass", "is_active": true }
-```
+Base path: `/api/v1/lookups`
 
-**Header dùng cho endpoint bảo vệ:**
-```
-Authorization: Bearer <access_token>
-```
+Lightweight endpoints for dropdowns/selectors.
 
-**JWT payload tối thiểu:**
-```json
-{ "sub": "1", "role": "teacher", "teacher_id": 45, "type": "access", "jti": "..." }
-```
+### GET `/teachers` (admin)
+List teachers for dropdown.
 
-**ENV:**
-- `JWT_SECRET_KEY`
-- `JWT_ALGORITHM` (default: HS256)
-- `JWT_EXPIRE_MINUTES` (default: 60)
-- `JWT_REFRESH_EXPIRE_MINUTES` (default: 43200)
-- `BOOTSTRAP_SECRET` - Secret key cho bootstrap admin (nên đổi khi deploy)
+### GET `/classrooms` (admin)
+List classrooms for dropdown.
 
-### Email Configuration (for sending teacher account emails)
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `EMAIL_SENDER` | Gmail address to send from | `monitor@gmail.com` |
-| `EMAIL_PASSWORD` | Gmail App Password (16 chars) | `abcd efgh ijkl mnop` |
-| `EMAIL_RECEIVER` | Default receiver (comma-separated) | `admin@school.com` |
+### GET `/students` (admin)
+Search students for dropdown.
 
-> **Note:** To create Gmail App Password: 1) Enable 2-Step Verification, 2) Go to myaccount.google.com/apppasswords, 3) Create for 'Mail'
-
----
-## 19. Admin Timetable & Attendance
-
-> Namespace: `/api/v1/admin/*`  (RBAC: role `admin`)
-
-### GET `/admin/timetable`
-**Query params:** `from`, `to`, `teacher_id` (optional)
-
-### POST `/admin/timetable`
-Tạo lịch dạy cho giáo viên.
-
-**Body:**
-```json
-{
-  "teacher_id": 45,
-  "classroom_id": 18,
-  "class_subject_id": 501,
-  "subject_id": 7,
-  "start_time": "2026-03-11T08:00:00",
-  "end_time": "2026-03-11T09:30:00",
-  "room_number": "A-302",
-  "note": "Tiết chính khóa"
-}
-```
-
-### PATCH `/admin/timetable/{entry_id}`
-Cập nhật lịch dạy (partial).
-
-### DELETE `/admin/timetable/{entry_id}`
-Xóa mềm lịch dạy.
+### GET `/subjects` (admin)
+List subjects for dropdown.
 
 ---
 
-### GET `/admin/attendance/matrix`
-**Query params:** `classroom_id`, `date_from`, `date_to`
+## 11. Teacher Portal
 
-### PATCH `/admin/attendance/entries`
-Ghi điểm danh hàng loạt (admin).
+Base path: `/api/v1/teacher`
 
-**Body:**
-```json
-{
-  "classroom_id": 18,
-  "recorded_by": 45,
-  "items": [
-    { "student_id": 301, "date": "2026-03-03", "status": "present", "note": "" }
-  ]
-}
-```
+Teacher's personal workspace.
 
----
+### GET `/dashboard` (teacher)
+Teacher dashboard.
 
-## 20. Lookups
+### GET `/assignments` (teacher)
+List teaching assignments.
 
-> Namespace: `/api/v1/lookups/*`  (RBAC: role `admin`)
+### GET `/classrooms/{classroom_id}/students` (teacher)
+List students in a classroom.
 
-### GET `/lookups/teachers`
-Danh sách giáo viên tối giản cho dropdown.
+### GET `/gradebook/matrix` (teacher)
+Get gradebook matrix for a class-subject.
 
-**Query params:** `search` (optional, search by code/name)
+### PATCH `/gradebook/entries` (teacher)
+Batch upsert gradebook entries.
 
-**Response data:**
-```json
-{
-  "items": [
-    { "id": 1, "teacher_code": "GV0001", "full_name": "Tran Thi Mai" }
-  ]
-}
-```
+### GET `/attendance/matrix` (teacher)
+Get attendance matrix.
+
+### PATCH `/attendance/entries` (teacher)
+Batch update attendance.
+
+### GET `/timetable` (teacher)
+Get teacher timetable.
 
 ---
 
-### GET `/lookups/classrooms`
-Danh sách lớp học tối giản.
+## 12. Admin (Timetable & Attendance)
 
-**Query params:** `search` (optional, search by code/name)
+Base path: `/api/v1/admin`
 
-**Response data:**
-```json
-{
-  "items": [
-    { "id": 18, "class_code": "10A1-2025", "class_name": "Lớp 10A1", "grade_level": 10, "academic_year": "2025-2026" }
-  ]
-}
-```
+### GET `/timetable` (admin)
+List all timetables.
 
----
+### POST `/timetable` (admin)
+Create timetable entry.
 
-### GET `/lookups/students`
-Danh sách học sinh tối giản.
+### PATCH `/timetable/{entry_id}` (admin)
+Update timetable entry.
 
-**Query params:** `search` (optional, search by code/name)
+### DELETE `/timetable/{entry_id}` (admin)
+Delete timetable entry.
 
-**Response data:**
-```json
-{
-  "items": [
-    { "id": 301, "student_code": "HS0301", "full_name": "Nguyễn An", "class_name": "10A1" }
-  ]
-}
-```
+### GET `/attendance/matrix` (admin)
+Get attendance matrix for any classroom.
+
+### PATCH `/attendance/entries` (admin)
+Batch update attendance (admin override).
 
 ---
 
-### GET `/lookups/subjects`
-Danh sách môn học tối giản.
+## Response Format
 
-**Query params:** `search` (optional, search by code/name)
-
-**Response data:**
+### Success
 ```json
 {
-  "items": [
-    { "id": 7, "subject_code": "TOAN", "subject_name": "Toán" }
-  ]
+  "code": 200,
+  "message": "Success",
+  "detail": "Operation description",
+  "data": { ... },
+  "errors": null
 }
 ```
 
+### Created (201)
+```json
+{
+  "code": 201,
+  "message": "Created",
+  "detail": "Resource created",
+  "data": { ... },
+  "errors": null
+}
+```
 
+### Error (4xx, 5xx)
+```json
+{
+  "code": 400,
+  "message": "Error",
+  "detail": "Error description",
+  "data": null,
+  "errors": [...]
+}
+```

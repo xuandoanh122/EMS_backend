@@ -38,7 +38,7 @@ async def login(
     data: LoginRequest,
     service: AuthService = Depends(get_service),
 ) -> APIResponse[TokenResponse]:
-    result = await service.login(data.username, data.password)
+    result = await service.login(data.email, data.password)
     return APIResponse.success(data=result.model_dump(), detail="Login success")
 
 
@@ -178,6 +178,25 @@ async def reset_password(
     """
     result = await service.reset_password(data.token, data.new_password)
     return APIResponse.success(detail=result["message"])
+
+
+@router.get(
+    "/reset-password/validate", 
+    status_code=200, 
+    summary="Kiểm tra token reset mật khẩu"
+)
+async def validate_reset_password_token(
+    token: str,
+    service: AuthService = Depends(get_service),
+) -> APIResponse:
+    """
+    Kiểm tra token reset mật khẩu có hợp lệ không.
+    
+    - Token có hiệu lực trong 30 phút
+    - Mỗi token chỉ sử dụng được 1 lần
+    """
+    result = await service.validate_reset_token(token)
+    return APIResponse.success(data=result)
 
 
 @router.post(

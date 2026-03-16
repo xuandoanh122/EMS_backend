@@ -11,7 +11,9 @@ from app.modules.auth.entity import UserRole
 
 
 class LoginRequest(BaseModel):
-    username: str = Field(..., min_length=3, max_length=50)
+    """Yêu cầu đăng nhập."""
+    
+    email: str = Field(..., description="Email của tài khoản (ví dụ: doanh.nguyen@eiu.edu.vn)")
     password: str = Field(..., min_length=6, max_length=128)
 
 
@@ -35,7 +37,7 @@ class TokenResponse(BaseModel):
 
 
 class UserCreateRequest(BaseModel):
-    username: str = Field(..., min_length=3, max_length=50)
+    username: str = Field(..., min_length=3, max_length=255, description="Username (nên sử dụng email)")
     password: str = Field(..., min_length=6, max_length=128)
     role: UserRole
     teacher_id: Optional[int] = None

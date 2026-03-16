@@ -132,16 +132,25 @@ class AuthRepository:
     # ----------------------------------------------------------------
 
     async def get_user_by_email(self, email: str) -> Optional[User]:
-        """Lấy user theo email (qua teacher relationship)."""
+        """Lấy user theo email (qua teacher relationship hoặc username)."""
         try:
-            # Join với teachers để tìm theo email
+            # Thử tìm theo teacher email trước
             from app.modules.teacher.entity import Teacher
             result = await self._s.execute(
                 select(User)
                 .join(Teacher, User.teacher_id == Teacher.id)
                 .where(Teacher.email == email)
             )
-            return result.scalars().first()
+            user = result.scalars().first()
+            
+            # Nếu không tìm thấy, thử tìm theo username (cho admin)
+            if not user:
+                result = await self._s.execute(
+                    select(User).where(User.username == email)
+                )
+                user = result.scalars().first()
+            
+            return user
         except SQLAlchemyError as exc:
             raise DatabaseQueryException(operation="get_user_by_email", reason=str(exc)) from exc
 

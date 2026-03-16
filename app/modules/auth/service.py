@@ -3,6 +3,8 @@ Auth service.
 """
 
 from datetime import datetime, timedelta
+import logging
+import secrets
 from typing import Optional
 
 from app.core.exceptions.auth import (
@@ -22,6 +24,7 @@ from app.core.security import (
     verify_password,
 )
 from app.modules.auth.dto import (
+    CreateTeacherAccountResponse,
     LogoutRequest,
     RefreshRequest,
     TokenResponse,
@@ -38,13 +41,18 @@ class AuthService:
     def __init__(self, session) -> None:
         self._repo = AuthRepository(session)
 
-    async def login(self, username: str, password: str) -> TokenResponse:
-        user = await self._repo.get_user_by_username(username)
+    async def login(self, email: str, password: str) -> TokenResponse:
+        logger = logging.getLogger("auth")
+        user = await self._repo.get_user_by_email(email)
         if not user:
+            logger.warning(f"Login failed: user not found: {email}")
             raise InvalidCredentialsException()
         if not user.is_active:
+            logger.warning(f"Login failed: account disabled: {email}")
             raise AccountDisabledException()
+        logger.info(f"User found: {email}, password_hash: {user.password_hash[:20]}...")
         if not verify_password(password, user.password_hash):
+            logger.warning(f"Login failed: wrong password for: {email}")
             raise InvalidCredentialsException()
 
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -157,6 +165,75 @@ class AuthService:
         created = await self._repo.create_user(user)
         return UserResponse.model_validate(created)
 
+    async def create_teacher_account(self, teacher_id: int, send_email: bool = True) -> CreateTeacherAccountResponse:
+        """
+        Tạo tài khoản cho Giáo viên.
+        
+        Args:
+            teacher_id: ID của giáo viên
+            send_email: Có gửi email thông báo không
+            
+        Returns:
+            Thông tin tài khoản đã tạo
+        """
+        import secrets
+        import logging
+        logger = logging.getLogger("auth")
+        
+        # Lấy thông tin teacher
+        teacher = await self._repo.get_teacher_by_id(teacher_id)
+        if not teacher:
+            raise NotFoundException(resource="Teacher", identifier=str(teacher_id))
+        
+        # Kiểm tra đã có tài khoản chưa
+        existing_user = await self._repo.get_user_by_teacher_id(teacher_id)
+        if existing_user:
+            raise AlreadyExistsException(resource="User", identifier=f"Teacher ID: {teacher_id}")
+        
+        # Tạo username từ email (sử dụng full email)
+        username = teacher.email if teacher.email else f"teacher_{teacher_id}"
+        
+        # Tạo mật khẩu tạm thời
+        temp_password = secrets.token_urlsafe(8)
+        
+        # Tạo user
+        user = User(
+            username=username,
+            password_hash=get_password_hash(temp_password),
+            role=UserRole.TEACHER,
+            teacher_id=teacher_id,
+            is_active=True,
+            must_change_password=True,
+        )
+        created_user = await self._repo.create_user(user)
+        
+        # Gửi email nếu được yêu cầu
+        email_sent = False
+        if send_email:
+            try:
+                from app.utils.emailer import send_teacher_account_email
+                send_teacher_account_email(
+                    teacher_email=teacher.email,
+                    teacher_name=teacher.full_name,
+                    teacher_code=teacher.teacher_code,
+                    temp_password=temp_password,
+                )
+                email_sent = True
+            except Exception as e:
+                logger.error(f"Failed to send teacher account email: {e}")
+        
+        return CreateTeacherAccountResponse(
+            user_id=created_user.id,
+            teacher_id=teacher.id,
+            teacher_code=teacher.teacher_code,
+            teacher_name=teacher.full_name,
+            email=teacher.email,
+            username=username,
+            temp_password=temp_password,
+            email_sent=email_sent,
+            must_change_password=True,
+        )
+
     async def list_users(
         self,
         page: int,
@@ -200,82 +277,6 @@ class AuthService:
         updated = await self._repo.update_user(user, update_data)
         return UserResponse.model_validate(updated)
 
-    async def create_teacher_account(self, teacher_id: int, send_email: bool = True) -> dict:
-        """
-        Tạo tài khoản cho Giáo viên.
-        
-        Args:
-            teacher_id: ID của giáo viên
-            send_email: Có gửi email thông báo không
-        
-        Returns:
-            Dict chứa thông tin tài khoản đã tạo
-        """
-        import secrets
-        import string
-        
-        # Lấy thông tin giáo viên
-        teacher = await self._repo.get_teacher_by_id(teacher_id)
-        if not teacher:
-            raise NotFoundException(resource="Teacher", identifier=str(teacher_id))
-        
-        if not teacher.email:
-            raise ValidationException(detail="Gi\u00e1o vi\u00ean ch\u01b0a c\u00f3 email, kh\u00f4ng th\u1ec3 t\u1ea1o t\u00e0i kho\u1ea3n")
-        
-        # Kiểm tra đã có tài khoản chưa
-        if teacher.id and await self._repo.get_user_by_teacher_id(teacher_id):
-            raise AlreadyExistsException(resource="User", identifier=f"teacher_id={teacher_id}")
-        
-        # Tạo username từ email
-        username = teacher.email.split("@")[0].lower()
-        # Đảm bảo username unique
-        base_username = username
-        counter = 1
-        while await self._repo.get_user_by_username(username):
-            username = f"{base_username}{counter}"
-            counter += 1
-        
-        # Tạo mật khẩu tạm thời
-        temp_password = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(10))
-        
-        # Tạo user
-        user = User(
-            username=username,
-            password_hash=get_password_hash(temp_password),
-            role=UserRole.TEACHER,
-            teacher_id=teacher_id,
-            is_active=True,
-            must_change_password=True,
-        )
-        created = await self._repo.create_user(user)
-        
-        # Gửi email
-        email_sent = False
-        if send_email and teacher.email:
-            try:
-                from app.utils.emailer import send_teacher_account_email
-                email_sent = send_teacher_account_email(
-                    teacher_email=teacher.email,
-                    teacher_name=teacher.full_name,
-                    teacher_code=teacher.teacher_code,
-                    temp_password=temp_password,
-                )
-            except Exception as e:
-                # Log error but don't fail the operation
-                import logging
-                logging.getLogger("auth").error(f"Failed to send email: {e}")
-        
-        return {
-            "user_id": created.id,
-            "teacher_id": teacher.id,
-            "teacher_code": teacher.teacher_code,
-            "teacher_name": teacher.full_name,
-            "email": teacher.email,
-            "username": created.username,
-            "temp_password": temp_password,
-            "email_sent": email_sent,
-            "must_change_password": created.must_change_password,
-        }
 
     # ----------------------------------------------------------------
     # Password Reset
@@ -321,7 +322,7 @@ class AuthService:
             await self._repo.create_password_reset_token(token_obj)
             
             # Gửi email
-            user_name = user.teacher.full_name if user.teacher else user.username
+            user_name = user.username
             
             try:
                 from app.utils.emailer import send_password_reset_email
@@ -350,6 +351,8 @@ class AuthService:
         Returns:
             Thông báo thành công
         """
+        logger = logging.getLogger("auth")
+        
         # Validate password
         if len(new_password) < 6:
             raise ValidationException(detail="Mật khẩu phải có ít nhất 6 ký tự")
@@ -365,14 +368,44 @@ class AuthService:
             raise ValidationException(detail="Tài khoản không hợp lệ")
         
         # Đổi mật khẩu
+        logger.info(f"Reset password for user_id: {user.id}, current hash: {user.password_hash[:20]}...")
         user.password_hash = get_password_hash(new_password)
         user.must_change_password = False
-        await self._repo.update_user(user, {})
+        logger.info(f"New hash: {user.password_hash[:20]}...")
+        await self._repo.update_user(user, {"password_hash": user.password_hash, "must_change_password": user.must_change_password})
+        logger.info("Password updated successfully")
         
         # Đánh dấu token đã sử dụng
         await self._repo.mark_password_reset_token_used(token_obj)
         
         return {"message": "Đặt lại mật khẩu thành công"}
+
+    async def validate_reset_token(self, token: str) -> dict:
+        """
+        Validate the password reset token.
+        
+        Args:
+            token: Password reset token
+        
+        Returns:
+            Token info if valid
+        """
+        # Get token
+        token_obj = await self._repo.get_valid_password_reset_token(token)
+        if not token_obj:
+            raise ValidationException(detail="Token không hợp lệ hoặc đã hết hạn")
+        
+        # Get user
+        user = await self._repo.get_user_by_id(token_obj.user_id)
+        if not user or not user.is_active:
+            raise ValidationException(detail="Tài khoản không hợp lệ")
+        
+        return {
+            "valid": True,
+            "user_id": user.id,
+            "username": user.username,
+            "expires_at": token_obj.expires_at.isoformat() if token_obj.expires_at else None,
+        }
 
     async def change_password(
         self,
@@ -472,216 +505,6 @@ class AuthService:
         user = await self._repo.get_user_by_id(user_id)
         if not user:
             raise NotFoundException(resource="User", identifier=str(user_id))
-        
-        username = user.username
-        await self._repo.delete_user(user)
-        
-        return {
-            "message": f"Xóa tài khoản '{username}' thành công",
-            "user_id": user_id,
-        }
-
-    # ----------------------------------------------------------------
-    # Password Reset
-    # ----------------------------------------------------------------
-
-    async def forgot_password(self, email: str) -> dict:
-        """
-        Xử lý yêu cầu quên mật khẩu.
-        
-        Args:
-            email: Email của tài khoản
-        
-        Returns:
-            Thông báo đã gửi email reset (luôn trả về thành công để tránh email enumeration)
-        """
-        import logging
-        logger = logging.getLogger("auth")
-        
-        # Luôn trả về thành công để tránh email enumeration attack
-        try:
-            # Tìm user qua email
-            user = await self._repo.get_user_by_email(email)
-            if not user:
-                logger.info(f"Password reset requested for non-existent email: {email}")
-                return {"message": "Nếu email tồn tại, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu."}
-            
-            # Kiểm tra user có active không
-            if not user.is_active:
-                logger.warning(f"Password reset requested for disabled user: {email}")
-                return {"message": "Nếu email tồn tại, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu."}
-            
-            # Tạo token reset
-            reset_token = secrets.token_urlsafe(32)
-            expires_at = datetime.utcnow() + timedelta(minutes=30)
-            
-            from app.modules.auth.entity import PasswordResetToken
-            token_obj = PasswordResetToken(
-                user_id=user.id,
-                token=reset_token,
-                expires_at=expires_at,
-            )
-            
-            await self._repo.create_password_reset_token(token_obj)
-            
-            # Gửi email
-            user_name = user.teacher.full_name if user.teacher else user.username
-            
-            try:
-                from app.utils.emailer import send_password_reset_email
-                send_password_reset_email(
-                    email=email,
-                    user_name=user_name,
-                    reset_token=reset_token,
-                )
-            except Exception as e:
-                logger.error(f"Failed to send password reset email: {e}")
-            
-            return {"message": "Nếu email tồn tại, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu."}
-        
-        except Exception as e:
-            logger.error(f"Error in forgot_password: {e}")
-            return {"message": "Nếu email tồn tại, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu."}
-
-    async def reset_password(self, token: str, new_password: str) -> dict:
-        """
-        Đặt lại mật khẩu với token.
-        
-        Args:
-            token: Token reset mật khẩu
-            new_password: Mật khẩu mới
-        
-        Returns:
-            Thông báo thành công
-        """
-        # Validate password
-        if len(new_password) < 6:
-            raise ValidationException(detail="Mật khẩu phải có ít nhất 6 ký tự")
-        
-        # Lấy token
-        token_obj = await self._repo.get_valid_password_reset_token(token)
-        if not token_obj:
-            raise ValidationException(detail="Token không hợp lệ hoặc đã hết hạn")
-        
-        # Lấy user
-        user = await self._repo.get_user_by_id(token_obj.user_id)
-        if not user or not user.is_active:
-            raise ValidationException(detail="Tài khoản không hợp lệ")
-        
-        # Đổi mật khẩu
-        user.password_hash = get_password_hash(new_password)
-        user.must_change_password = False
-        await self._repo.update_user(user, {})
-        
-        # Đánh dấu token đã sử dụng
-        await self._repo.mark_password_reset_token_used(token_obj)
-        
-        return {"message": "Đặt lại mật khẩu thành công"}
-
-    async def change_password(
-        self,
-        user_id: int,
-        old_password: str,
-        new_password: str,
-    ) -> dict:
-        """
-        Đổi mật khẩu khi đã đăng nhập.
-        
-        Args:
-            user_id: ID của user
-            old_password: Mật khẩu cũ
-            new_password: Mật khẩu mới
-        
-        Returns:
-            Thông báo thành công
-        """
-        # Validate password
-        if len(new_password) < 6:
-            raise ValidationException(detail="Mật khẩu phải có ít nhất 6 ký tự")
-        
-        # Lấy user
-        user = await self._repo.get_user_by_id(user_id)
-        if not user:
-            raise NotFoundException(resource="User", identifier=str(user_id))
-        
-        # Verify old password
-        if not verify_password(old_password, user.password_hash):
-            raise InvalidCredentialsException()
-        
-        # Đổi mật khẩu
-        user.password_hash = get_password_hash(new_password)
-        user.must_change_password = False
-        await self._repo.update_user(user, {})
-        
-        return {"message": "Đổi mật khẩu thành công"}
-
-    async def deactivate_user(self, user_id: int) -> dict:
-        """
-        Vô hiệu hóa tài khoản (soft delete).
-        
-        Args:
-            user_id: ID của user cần vô hiệu hóa
-        
-        Returns:
-            Thông tin user đã bị vô hiệu hóa
-        """
-        user = await self._repo.get_user_by_id(user_id)
-        if not user:
-            raise NotFoundException(resource="User", identifier=str(user_id))
-        
-        # Không cho phép tự vô hiệu hóa
-        # (sẽ kiểm tra ở controller level)
-        
-        user.is_active = False
-        await self._repo.update_user(user, {})
-        
-        return {
-            "message": "Vô hiệu hóa tài khoản thành công",
-            "user_id": user.id,
-            "username": user.username,
-            "is_active": user.is_active,
-        }
-
-    async def reactivate_user(self, user_id: int) -> dict:
-        """
-        Kích hoạt lại tài khoản.
-        
-        Args:
-            user_id: ID của user cần kích hoạt
-        
-        Returns:
-            Thông tin user đã được kích hoạt
-        """
-        user = await self._repo.get_user_by_id(user_id)
-        if not user:
-            raise NotFoundException(resource="User", identifier=str(user_id))
-        
-        user.is_active = True
-        await self._repo.update_user(user, {})
-        
-        return {
-            "message": "Kích hoạt tài khoản thành công",
-            "user_id": user.id,
-            "username": user.username,
-            "is_active": user.is_active,
-        }
-
-    async def delete_user(self, user_id: int) -> dict:
-        """
-        Xóa vĩnh viễn tài khoản (hard delete).
-        
-        Args:
-            user_id: ID của user cần xóa
-        
-        Returns:
-            Thông báo thành công
-        """
-        user = await self._repo.get_user_by_id(user_id)
-        if not user:
-            raise NotFoundException(resource="User", identifier=str(user_id))
-        
-        # Không cho phép tự xóa
-        # (sẽ kiểm tra ở controller level)
         
         username = user.username
         await self._repo.delete_user(user)

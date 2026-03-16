@@ -11,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_async_session
 from app.core.exceptions.auth import AccountDisabledException, InsufficientRoleException, TokenBlacklistedException, TokenInvalidException
 from app.core.security import decode_token
-from app.modules.auth.repository import AuthRepository
+
+
+def get_auth_repository():
+    from app.modules.auth.repository import AuthRepository
+    return AuthRepository
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -38,7 +42,7 @@ async def get_current_user(
     if not user_id_raw or not role or token_type != "access" or not jti:
         raise TokenInvalidException()
 
-    repo = AuthRepository(session)
+    repo = get_auth_repository()(session)
     if await repo.is_blacklisted(jti):
         raise TokenBlacklistedException()
 

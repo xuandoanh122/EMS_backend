@@ -30,7 +30,7 @@ BOOTSTRAP_SECRET = os.getenv("BOOTSTRAP_SECRET", "ems-bootstrap-secret-key-chang
 
 class BootstrapRequest(BaseModel):
     secret: str = Field(..., description="Bootstrap secret key")
-    username: str = Field(..., min_length=3, max_length=50)
+    username: str = Field(..., min_length=3, max_length=255, description="Username (nên sử dụng email)")
     password: str = Field(..., min_length=6, max_length=128)
 
 

@@ -2,84 +2,32 @@
 
 ## 1. Thứ tự Debug (Priority Order)
 
-Khi gặp vấn đề về authentication/login/database, thực hiện theo thứ tự sau:
+### Nguyên tắc chung:
+- **Lỗi unexpected (lỗi không mong đợi)**: Check code trước, tìm đến file, sửa lỗi trong code trước
+- **Sau khi sửa xong**: Nếu cần thì chạy terminal để verify, không phải lúc nào cũng check trong terminal
+- **Cuối cùng**: Tự viết unit test để verify
 
-### Bước 1: Kiểm tra Server đang chạy
-```bash
-# Kiểm tra server có đang hoạt động không
-curl http://127.0.0.1:8000/api/v1/health
-```
+### Quy trình cụ thể cho Authentication/Login/Database:
 
-### Bước 2: Xem Logs của Server
-- Terminal đang chạy uvicorn sẽ hiển thị:
-  - `✅ Connected to PRIMARY database (MSSQL @ localhost:1433/ems_db)` = ĐANG DÙNG MSSQL (ĐÚNG)
-  - `⚠️  PRIMARY database unavailable` + `✅ Connected to BACKUP database (SQLite)` = ĐANG DÙNG SQLITE (CẦN FIX)
+#### Bước 1: Tìm lỗi trong code (KHÔNG chạy terminal)
+- Đọc code trong các file liên quan
+- Tìm hiểu flow hoạt động
+- Xác định nguyên nhân lỗi
 
-### Bước 3: Kiểm tra Database trực tiếp (MSSQL)
-Tạo script debug_db.py:
+#### Bước 2: Sửa lỗi trong code
+- Fix bug trực tiếp trong file code
+- Đảm bảo logic đúng
 
-```python
-# debug_db.py
-import pyodbc
+#### Bước 3: Chạy terminal để verify (nếu cần)
+- Chạy server và test API
+- Kiểm tra logs
 
-conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=localhost,1433;DATABASE=ems_db;UID=ems_server;PWD=Maiyeuem123@'
-
-def check_tables():
-    conn = pyodbc.connect(conn_str, timeout=5)
-    cursor = conn.cursor()
-    
-    # Kiểm tra các bảng
-    cursor.execute("""
-        SELECT TABLE_NAME 
-        FROM INFORMATION_SCHEMA.TABLES 
-        WHERE TABLE_TYPE='BASE TABLE'
-    """)
-    tables = [row[0] for row in cursor.fetchall()]
-    print(f"Tổng số bảng: {len(tables)}")
-    
-    # Kiểm tra Teachers
-    if 'teachers' in tables:
-        cursor.execute('SELECT COUNT(*) FROM teachers')
-        print(f"Teachers: {cursor.fetchone()[0]}")
-    
-    # Kiểm tra Users
-    if 'users' in tables:
-        cursor.execute('SELECT COUNT(*) FROM users')
-        print(f"Users: {cursor.fetchone()[0]}")
-        
-        cursor.execute('SELECT TOP 5 id, username, role, teacher_id, is_active FROM users')
-        for row in cursor.fetchall():
-            print(f"  User: id={row[0]}, username={row[1]}, role={row[2]}, teacher_id={row[3]}, is_active={row[4]}")
-    
-    conn.close()
-
-if __name__ == '__main__':
-    check_tables()
-```
-
-Chạy: `python debug_db.py`
-
-### Bước 4: Kiểm tra App đang dùng Database nào
-```python
-# check_app_db.py
-import asyncio
-from app.core.database import init_db, is_using_backup
-
-async def main():
-    await init_db()
-    print(f"Using backup (SQLite): {is_using_backup()}")
-
-asyncio.run(main())
-```
-
-### Bước 5: Test API Login
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "doanh.nguyen", "password": "V7DOdshwnK"}'
-```
+#### Bước 4: Viết unit test (bắt buộc)
+- Tự viết unit test cho chức năng đã fix
+- Đảm bảo test cover các case
 
 ---
+Sau đó clean các terminal scripts đã chạy thành công
 
 ## 2. Các Terminal Scripts đã chạy thành công
 
@@ -160,18 +108,18 @@ curl http://127.0.0.1:8000/api/v1/health
 
 ### 5.1. Khi gặp lỗi Authentication/Login:
 
-1. **Kiểm tra logs server trước** - Xem database đang dùng
-2. **Kiểm tra MSSQL trực tiếp** - Dùng pyodbc query
-3. **Kiểm tra users table** - Xem có user chưa, is_active = true không
-4. **Test API login** - Gọi trực tiếp curl
-5. **Kiểm tra teacher_id** - Đảm bảo user có teacher_id khớp với teachers table
+1. **Đọc code trong auth module** - Xem flow xử lý
+2. **Tìm lỗi trong service/repository** - Xác định nguyên nhân
+3. **Sửa lỗi trong code** - Fix trực tiếp
+4. **Verify bằng curl** - Test API
+5. **Viết unit test** - Đảm bảo cover case đã fix
 
 ### 5.2. Khi gặp lỗi Database Connection:
 
-1. **Kiểm tra SQL Server đang chạy**: Services > SQL Server (MSSQLSERVER)
-2. **Kiểm tra credentials trong .env**
-3. **Kiểm tra port 1433 không bị block**
-4. **Thử kết nối bằng pyodbc trước**
+1. **Kiểm tra code database.py** - Xem logic kết nối
+2. **Kiểm tra SQL Server đang chạy**: Services > SQL Server (MSSQLSERVER)
+3. **Kiểm tra credentials trong .env**
+4. **Kiểm tra port 1433 không bị block**
 
 ### 5.3. Checklist Debug Authentication:
 - [ ] Server đang dùng MSSQL (không phải SQLite)
@@ -192,13 +140,15 @@ curl http://127.0.0.1:8000/api/v1/health
 | Teachers = 0 | Chưa import dữ liệu | Import teachers vào MSSQL |
 | Users = 0 | Chưa tạo account | Tạo qua API /auth/teachers/{id}/account |
 | MSSQL Connection Error | SQL Server không chạy | Start SQL Server service |
+| API 404 Not Found | Endpoint chưa được tạo | Thêm endpoint trong controller |
 
 ---
 
 ## 7. Lưu ý quan trọng
 
 1. **MSSQL là database chính** - SQLite chỉ là fallback
-2. **Luôn kiểm tra logs** - Server logs sẽ cho biết đang dùng DB nào
+2. **Luôn kiểm tra code trước** - Không phải lúc nào cũng cần chạy terminal
 3. **Dùng pyodbc để query trực tiếp** - Để xác định vấn đề nằm ở đâu
 4. **Kiểm tra credentials** - .env phải có thông tin đúng
 5. **Khởi động lại server** - Sau khi thay đổi .env
+6. **Viết unit test sau khi fix** - Đảm bảo code hoạt động đúng
